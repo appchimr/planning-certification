@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
 <header class="app-header">
   <div class="brand">
     <img src="logo-chimr.jpg" class="brand-logo" alt="Logo CHIMR">
@@ -15,6 +16,7 @@
       <p>Suivi de l’avancement — CHIMR</p>
     </div>
   </div>
+
   <div class="header-actions no-export">
     <button id="btnRefresh" class="btn ghost">Actualiser</button>
     <button id="btnExportPng" class="btn">Exporter PNG</button>
@@ -24,51 +26,109 @@
 </header>
 
 <main class="page-shell">
+
   <section class="public-intro no-export">
     <div>
       <h2>Où en sommes-nous ?</h2>
       <p>Cette page permet à l’ensemble des professionnels de suivre le programme de préparation, les travaux réalisés et les prochaines étapes avant la visite de certification HAS 2028.</p>
     </div>
-    <div class="public-pill" id="lastUpdate">Actualisation en cours…</div>
+
+    <div class="public-pill" id="lastUpdate">
+      Actualisation en cours…
+    </div>
   </section>
 
-  <div class="status-strip no-export"><span id="connectionDot" class="status-dot warn"></span><span id="connectionText">Connexion à la sauvegarde centrale…</span></div>
+  <div class="status-strip no-export">
+    <span id="connectionDot" class="status-dot warn"></span>
+    <span id="connectionText">
+      Connexion à la sauvegarde centrale…
+    </span>
+  </div>
 
   <section class="dashboard no-export">
+
     <div class="metric">
       <span class="metric-label">Méthodes réalisées</span>
       <strong id="methodProgress">0 / 0</strong>
-      <div class="progress"><span id="methodProgressBar"></span></div>
+      <div class="progress">
+        <span id="methodProgressBar"></span>
+      </div>
     </div>
+
     <div class="metric">
       <span class="metric-label">Thématiques traitées</span>
       <strong id="themeProgress">0 / 0</strong>
-      <div class="progress theme"><span id="themeProgressBar"></span></div>
+      <div class="progress theme">
+        <span id="themeProgressBar"></span>
+      </div>
     </div>
+
     <div class="metric">
-      <span class="metric-label">Prochaines échéances</span>
+      <span class="metric-label">Prochaines échéances datées</span>
       <div id="nextList" class="next-list"></div>
     </div>
+
   </section>
 
   <section id="exportArea" class="export-sheet">
+
     <div class="export-header">
-      <img src="logo-chimr.jpg" class="export-logo" alt="Logo CHIMR">
+
+      <img
+        src="logo-chimr.jpg"
+        class="export-logo"
+        alt="Logo CHIMR">
+
       <div class="export-title-wrap">
-        <h2>Programme prévisionnel de préparation à la certification HAS 2028</h2>
+        <h2>
+          Programme prévisionnel de préparation à la certification HAS 2028
+        </h2>
         <div id="legend" class="legend"></div>
       </div>
-      <div class="abbr"><div><strong>HC</strong> : Hospitalisation complète</div><div><strong>HDJ</strong> : Hospitalisation de jour</div></div>
+
+      <div class="abbr">
+        <div><strong>HC</strong> : Hospitalisation complète</div>
+        <div><strong>HDJ</strong> : Hospitalisation de jour</div>
+      </div>
+
     </div>
+
     <div id="planning"></div>
+
     <div class="process-row">
-      <div class="process-step green"><span>🎯</span><b>Entraînement aux méthodes</b></div><div class="process-arrow">····▶</div>
-      <div class="process-step blue"><span>📘</span><b>Adaptation référentiel 2028</b></div><div class="process-arrow">····▶</div>
-      <div class="process-step orange"><span>🔎</span><b>Vérification finale</b></div><div class="process-arrow">····▶</div>
-      <div class="process-step red"><span>👥</span><b>Certification HAS 2028</b></div>
+
+      <div class="process-step green">
+        <span>🎯</span>
+        <b>Entraînement aux méthodes</b>
+      </div>
+
+      <div class="process-arrow">····▶</div>
+
+      <div class="process-step blue">
+        <span>📘</span>
+        <b>Adaptation référentiel 2028</b>
+      </div>
+
+      <div class="process-arrow">····▶</div>
+
+      <div class="process-step orange">
+        <span>🔎</span>
+        <b>Vérification finale</b>
+      </div>
+
+      <div class="process-arrow">····▶</div>
+
+      <div class="process-step red">
+        <span>👥</span>
+        <b>Certification HAS 2028</b>
+      </div>
+
     </div>
+
   </section>
+
 </main>
+
 <div id="toast" class="toast"></div>
 
 <script src="config.js"></script>
@@ -76,5 +136,6 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="common.js"></script>
 <script src="public.js"></script>
+
 </body>
 </html>

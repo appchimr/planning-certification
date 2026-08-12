@@ -7,83 +7,317 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
 <header class="app-header">
+
   <div class="brand">
     <img src="logo-chimr.jpg" class="brand-logo" alt="Logo CHIMR">
+
     <div>
       <h1>Administration — Certification HAS 2028</h1>
       <p>Pilotage qualité — CHIMR</p>
     </div>
   </div>
+
   <div class="header-actions no-export">
-    <a href="index.html" class="btn ghost">Vue utilisateurs</a>
-    <button id="btnReload" class="btn ghost">Recharger</button>
-    <button id="btnExportPng" class="btn">Exporter PNG</button>
-    <button id="btnExportPdf" class="btn">Exporter PDF</button>
-    <button id="btnExportData" class="btn ghost">Sauvegarde JSON</button>
-    <label class="btn ghost">Importer JSON<input id="fileImport" type="file" accept=".json,application/json" hidden></label>
+    <a href="index.html" class="btn ghost">
+      Vue utilisateurs
+    </a>
+
+    <button id="btnReload" class="btn ghost">
+      Recharger
+    </button>
+
+    <button id="btnExportPng" class="btn">
+      Exporter PNG
+    </button>
+
+    <button id="btnExportPdf" class="btn">
+      Exporter PDF
+    </button>
+
+    <button id="btnExportData" class="btn ghost">
+      Télécharger une sauvegarde
+    </button>
+
+    <label class="btn ghost">
+      Restaurer une sauvegarde
+      <input
+        id="fileImport"
+        type="file"
+        accept=".json,application/json"
+        hidden>
+    </label>
   </div>
+
 </header>
 
 <main class="page-shell">
+
   <div class="admin-lock no-export">
-    <strong id="lockText">Administration verrouillée</strong>
-    <input id="adminKey" type="password" autocomplete="current-password" placeholder="Clé d’administration">
-    <button id="btnUnlock" class="btn primary">Déverrouiller</button>
-    <span class="metric-sub">La clé n’est pas enregistrée dans GitHub. Elle reste uniquement dans cette session du navigateur.</span>
+    <strong id="lockText">
+      Administration verrouillée
+    </strong>
+
+    <input
+      id="adminKey"
+      type="password"
+      autocomplete="current-password"
+      placeholder="Clé d’administration">
+
+    <button id="btnUnlock" class="btn primary">
+      Déverrouiller
+    </button>
+
+    <span class="metric-sub">
+      La clé n’est pas enregistrée dans GitHub.
+      Elle reste uniquement dans cette session du navigateur.
+    </span>
   </div>
 
-  <div class="status-strip no-export"><span id="connectionDot" class="status-dot warn"></span><span id="connectionText">Connexion à la sauvegarde centrale…</span><span style="margin-left:auto" id="saveState">—</span></div>
+  <div class="status-strip no-export">
+    <span id="connectionDot" class="status-dot warn"></span>
+
+    <span id="connectionText">
+      Connexion à la sauvegarde centrale…
+    </span>
+
+    <span
+      style="margin-left:auto"
+      id="saveState">—</span>
+  </div>
 
   <section class="dashboard no-export">
+
     <div class="metric">
-      <span class="metric-label">Méthodes réalisées</span>
-      <strong id="methodProgress">0 / 0</strong>
-      <div class="progress"><span id="methodProgressBar"></span></div>
+      <span class="metric-label">
+        Méthodes réalisées
+      </span>
+
+      <strong id="methodProgress">
+        0 / 0
+      </strong>
+
+      <div class="progress">
+        <span id="methodProgressBar"></span>
+      </div>
     </div>
+
     <div class="metric">
-      <span class="metric-label">Thématiques traitées</span>
-      <strong id="themeProgress">0 / 0</strong>
-      <div class="progress theme"><span id="themeProgressBar"></span></div>
+      <span class="metric-label">
+        Thématiques traitées
+      </span>
+
+      <strong id="themeProgress">
+        0 / 0
+      </strong>
+
+      <div class="progress theme">
+        <span id="themeProgressBar"></span>
+      </div>
     </div>
+
     <div class="metric">
-      <span class="metric-label">Prochaines échéances</span>
+      <span class="metric-label">
+        Prochaines échéances datées
+      </span>
+
       <div id="nextList" class="next-list"></div>
     </div>
+
   </section>
 
   <section id="exportArea" class="export-sheet">
+
     <div class="export-header">
-      <img src="logo-chimr.jpg" class="export-logo" alt="Logo CHIMR">
+
+      <img
+        src="logo-chimr.jpg"
+        class="export-logo"
+        alt="Logo CHIMR">
+
       <div class="export-title-wrap">
-        <h2>Programme prévisionnel de préparation à la certification HAS 2028</h2>
+        <h2>
+          Programme prévisionnel de préparation à la certification HAS 2028
+        </h2>
+
         <div id="legend" class="legend"></div>
       </div>
-      <div class="abbr"><div><strong>HC</strong> : Hospitalisation complète</div><div><strong>HDJ</strong> : Hospitalisation de jour</div></div>
+
+      <div class="abbr">
+        <div>
+          <strong>HC</strong> :
+          Hospitalisation complète
+        </div>
+
+        <div>
+          <strong>HDJ</strong> :
+          Hospitalisation de jour
+        </div>
+      </div>
+
     </div>
+
     <div id="planning"></div>
+
     <div class="process-row">
-      <div class="process-step green"><span>🎯</span><b>Entraînement aux méthodes</b></div><div class="process-arrow">····▶</div>
-      <div class="process-step blue"><span>📘</span><b>Adaptation référentiel 2028</b></div><div class="process-arrow">····▶</div>
-      <div class="process-step orange"><span>🔎</span><b>Vérification finale</b></div><div class="process-arrow">····▶</div>
-      <div class="process-step red"><span>👥</span><b>Certification HAS 2028</b></div>
+
+      <div class="process-step green">
+        <span>🎯</span>
+        <b>Entraînement aux méthodes</b>
+      </div>
+
+      <div class="process-arrow">····▶</div>
+
+      <div class="process-step blue">
+        <span>📘</span>
+        <b>Adaptation référentiel 2028</b>
+      </div>
+
+      <div class="process-arrow">····▶</div>
+
+      <div class="process-step orange">
+        <span>🔎</span>
+        <b>Vérification finale</b>
+      </div>
+
+      <div class="process-arrow">····▶</div>
+
+      <div class="process-step red">
+        <span>👥</span>
+        <b>Certification HAS 2028</b>
+      </div>
+
     </div>
+
   </section>
+
 </main>
 
 <dialog id="eventDialog">
+
   <form method="dialog" id="eventForm">
-    <div class="dialog-head"><h3 id="dialogTitle">Modifier un événement</h3><button type="button" id="closeDialog" class="icon-btn">×</button></div>
+
+    <div class="dialog-head">
+      <h3 id="dialogTitle">
+        Modifier un événement
+      </h3>
+
+      <button
+        type="button"
+        id="closeDialog"
+        class="icon-btn">
+        ×
+      </button>
+    </div>
+
     <input type="hidden" id="eventId">
-    <label>Type<select id="eventType" required>
-      <option value="TH">TH — Thématique</option><option value="PT">PT — Patient traceur</option>
-      <option value="PR">PR — Parcours traceur</option><option value="TC">TC — Traceur ciblé</option><option value="AS">AS — Audit système</option>
-    </select></label>
-    <label>Intitulé<input id="eventLabel" type="text" maxlength="120" required></label>
-    <label>Mois<select id="eventMonthSelect" required></select></label>
-    <label class="check-line"><input id="eventDone" type="checkbox"><span id="doneLabel">Réalisé</span></label>
-    <div class="dialog-actions"><button type="button" id="cancelDialog" class="btn ghost">Annuler</button><button type="submit" class="btn primary">Enregistrer</button></div>
+
+    <label>
+      Type
+
+      <select id="eventType" required>
+        <option value="TH">
+          TH — Thématique
+        </option>
+
+        <option value="PT">
+          PT — Patient traceur
+        </option>
+
+        <option value="PR">
+          PR — Parcours traceur
+        </option>
+
+        <option value="TC">
+          TC — Traceur ciblé
+        </option>
+
+        <option value="AS">
+          AS — Audit système
+        </option>
+
+        <option value="EV">
+          EV — Évaluation
+        </option>
+
+        <option value="EP">
+          EP — Expérience patient
+        </option>
+      </select>
+    </label>
+
+    <label>
+      Intitulé
+
+      <input
+        id="eventLabel"
+        type="text"
+        maxlength="120"
+        required>
+    </label>
+
+    <label>
+      Mois
+
+      <select
+        id="eventMonthSelect"
+        required>
+      </select>
+    </label>
+
+    <div
+      id="dateFields"
+      class="date-fields"
+      hidden>
+
+      <label>
+        Date programmée
+
+        <input
+          id="eventPlannedDate"
+          type="date">
+      </label>
+
+      <label>
+        Date réalisée
+
+        <input
+          id="eventCompletedDate"
+          type="date">
+      </label>
+
+    </div>
+
+    <label class="check-line">
+      <input
+        id="eventDone"
+        type="checkbox">
+
+      <span id="doneLabel">
+        Réalisé
+      </span>
+    </label>
+
+    <div class="dialog-actions">
+
+      <button
+        type="button"
+        id="cancelDialog"
+        class="btn ghost">
+        Annuler
+      </button>
+
+      <button
+        type="submit"
+        class="btn primary">
+        Enregistrer
+      </button>
+
+    </div>
+
   </form>
+
 </dialog>
 
 <div id="toast" class="toast"></div>
@@ -93,5 +327,6 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="common.js"></script>
 <script src="admin.js"></script>
+
 </body>
 </html>
