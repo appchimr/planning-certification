@@ -145,9 +145,22 @@ function renderEvent(e){
   return row;
 }
 
+function getMonthPhase(month){
+  const training = [
+    "SEPTEMBRE 2026","OCTOBRE 2026","NOVEMBRE 2026","DÉCEMBRE 2026",
+    "JANVIER 2027","FÉVRIER 2027","MARS 2027","AVRIL 2027",
+    "MAI 2027","JUIN 2027","JUILLET 2027","AOÛT 2027"
+  ];
+  const transition = ["SEPTEMBRE 2027","OCTOBRE 2027","NOVEMBRE 2027","DÉCEMBRE 2027"];
+  if(training.includes(month)) return "phase-training";
+  if(transition.includes(month)) return "phase-transition";
+  if(month==="JANVIER 2028") return "phase-final";
+  return "";
+}
+
 function createMonthCard(month){
   const card = document.createElement("div");
-  card.className = "month-card";
+  card.className = `month-card ${getMonthPhase(month)}`.trim();
   const title = document.createElement("div");
   title.className = "month-title";
   title.textContent = month;
@@ -203,7 +216,7 @@ function createFinalSection(){
   grid.className = "final-grid";
 
   const jan = document.createElement("div");
-  jan.className = "final-col";
+  jan.className = "final-col phase-final";
   jan.innerHTML = `<div class="final-title">JANVIER 2028 · AUDITS SYSTÈME</div>`;
   const list = document.createElement("div");
   list.className = "event-list";
@@ -219,7 +232,7 @@ function createFinalSection(){
   jan.append(list,add,note);
 
   const feb = document.createElement("div");
-  feb.className = "final-col";
+  feb.className = "final-col phase-visit";
   feb.innerHTML = `
     <div class="visit-card">
       <div class="visit-head">FÉVRIER 2028 · VISITE DE CERTIFICATION HAS</div>
