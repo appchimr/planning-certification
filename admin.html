@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Certification HAS 2028 — CHIMR</title>
+  <title>Administration — Certification HAS 2028 CHIMR</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,28 +11,29 @@
   <div class="brand">
     <img src="logo-chimr.jpg" class="brand-logo" alt="Logo CHIMR">
     <div>
-      <h1>Préparation à la certification HAS 2028</h1>
-      <p>Suivi de l’avancement — CHIMR</p>
+      <h1>Administration — Certification HAS 2028</h1>
+      <p>Pilotage qualité — CHIMR</p>
     </div>
   </div>
   <div class="header-actions no-export">
-    <button id="btnRefresh" class="btn ghost">Actualiser</button>
+    <a href="index.html" class="btn ghost">Vue utilisateurs</a>
+    <button id="btnReload" class="btn ghost">Recharger</button>
     <button id="btnExportPng" class="btn">Exporter PNG</button>
     <button id="btnExportPdf" class="btn">Exporter PDF</button>
-    <a href="admin.html" class="btn ghost">Administration</a>
+    <button id="btnExportData" class="btn ghost">Sauvegarde JSON</button>
+    <label class="btn ghost">Importer JSON<input id="fileImport" type="file" accept=".json,application/json" hidden></label>
   </div>
 </header>
 
 <main class="page-shell">
-  <section class="public-intro no-export">
-    <div>
-      <h2>Où en sommes-nous ?</h2>
-      <p>Cette page permet à l’ensemble des professionnels de suivre le programme de préparation, les travaux réalisés et les prochaines étapes avant la visite de certification HAS 2028.</p>
-    </div>
-    <div class="public-pill" id="lastUpdate">Actualisation en cours…</div>
-  </section>
+  <div class="admin-lock no-export">
+    <strong id="lockText">Administration verrouillée</strong>
+    <input id="adminKey" type="password" autocomplete="current-password" placeholder="Clé d’administration">
+    <button id="btnUnlock" class="btn primary">Déverrouiller</button>
+    <span class="metric-sub">La clé n’est pas enregistrée dans GitHub. Elle reste uniquement dans cette session du navigateur.</span>
+  </div>
 
-  <div class="status-strip no-export"><span id="connectionDot" class="status-dot warn"></span><span id="connectionText">Connexion à la sauvegarde centrale…</span></div>
+  <div class="status-strip no-export"><span id="connectionDot" class="status-dot warn"></span><span id="connectionText">Connexion à la sauvegarde centrale…</span><span style="margin-left:auto" id="saveState">—</span></div>
 
   <section class="dashboard no-export">
     <div class="metric">
@@ -69,12 +70,28 @@
     </div>
   </section>
 </main>
+
+<dialog id="eventDialog">
+  <form method="dialog" id="eventForm">
+    <div class="dialog-head"><h3 id="dialogTitle">Modifier un événement</h3><button type="button" id="closeDialog" class="icon-btn">×</button></div>
+    <input type="hidden" id="eventId">
+    <label>Type<select id="eventType" required>
+      <option value="TH">TH — Thématique</option><option value="PT">PT — Patient traceur</option>
+      <option value="PR">PR — Parcours traceur</option><option value="TC">TC — Traceur ciblé</option><option value="AS">AS — Audit système</option>
+    </select></label>
+    <label>Intitulé<input id="eventLabel" type="text" maxlength="120" required></label>
+    <label>Mois<select id="eventMonthSelect" required></select></label>
+    <label class="check-line"><input id="eventDone" type="checkbox"><span id="doneLabel">Réalisé</span></label>
+    <div class="dialog-actions"><button type="button" id="cancelDialog" class="btn ghost">Annuler</button><button type="submit" class="btn primary">Enregistrer</button></div>
+  </form>
+</dialog>
+
 <div id="toast" class="toast"></div>
 
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="common.js"></script>
-<script src="public.js"></script>
+<script src="admin.js"></script>
 </body>
 </html>
