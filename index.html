@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Programme Certification HAS 2028 — CHIMR</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <img src="assets/logo-chimr.jpg" alt="Logo CHIMR" class="brand-logo" />
+      <div>
+        <h1>Programme prévisionnel de préparation à la certification HAS 2028</h1>
+        <p>CHIMR — outil de pilotage</p>
+      </div>
+    </div>
+    <div class="header-actions no-export">
+      <button id="btnExportPng" class="btn primary">Exporter PNG</button>
+      <button id="btnExportPdf" class="btn">Exporter PDF</button>
+      <button id="btnExportData" class="btn ghost">Sauvegarder les données</button>
+      <label class="btn ghost file-btn">Importer une sauvegarde
+        <input id="fileImport" type="file" accept=".json,application/json" hidden />
+      </label>
+      <button id="btnReset" class="btn danger-outline">Réinitialiser</button>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <section class="dashboard no-export">
+      <div class="metric">
+        <span class="metric-label">Avancement des méthodes</span>
+        <strong id="methodProgress">0 / 0</strong>
+        <div class="progress"><span id="methodProgressBar"></span></div>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Thématiques traitées</span>
+        <strong id="themeProgress">0 / 0</strong>
+        <div class="progress theme"><span id="themeProgressBar"></span></div>
+      </div>
+      <div class="metric compact">
+        <span class="metric-label">Sauvegarde</span>
+        <strong id="saveState">Locale</strong>
+        <span class="metric-sub">Les changements sont enregistrés automatiquement dans ce navigateur.</span>
+      </div>
+    </section>
+
+    <section id="exportArea" class="export-sheet">
+      <div class="export-header">
+        <img src="assets/logo-chimr.jpg" alt="Logo CHIMR" class="export-logo" />
+        <div class="export-title-wrap">
+          <h2>Programme prévisionnel de préparation à la certification HAS 2028</h2>
+          <div class="legend" id="legend"></div>
+        </div>
+        <div class="abbr">
+          <div><strong>HC</strong> : Hospitalisation complète</div>
+          <div><strong>HDJ</strong> : Hospitalisation de jour</div>
+        </div>
+      </div>
+
+      <div id="planning"></div>
+
+      <div class="process-row">
+        <div class="process-step green"><span>🎯</span><b>Entraînement aux méthodes</b></div>
+        <div class="process-arrow">······▶</div>
+        <div class="process-step blue"><span>📘</span><b>Adaptation référentiel 2028</b></div>
+        <div class="process-arrow">······▶</div>
+        <div class="process-step orange"><span>🔎</span><b>Vérification finale</b></div>
+        <div class="process-arrow">······▶</div>
+        <div class="process-step red"><span>👥</span><b>Certification HAS 2028</b></div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="eventDialog">
+    <form method="dialog" id="eventForm">
+      <div class="dialog-head">
+        <h3 id="dialogTitle">Modifier un événement</h3>
+        <button type="button" id="closeDialog" class="icon-btn" aria-label="Fermer">×</button>
+      </div>
+
+      <input type="hidden" id="eventId" />
+      <input type="hidden" id="eventMonth" />
+
+      <label>Type
+        <select id="eventType" required>
+          <option value="TH">TH — Thématique</option>
+          <option value="PT">PT — Patient traceur</option>
+          <option value="PR">PR — Parcours traceur</option>
+          <option value="TC">TC — Traceur ciblé</option>
+          <option value="AS">AS — Audit système</option>
+        </select>
+      </label>
+
+      <label>Intitulé
+        <input id="eventLabel" type="text" maxlength="120" required />
+      </label>
+
+      <label>Mois
+        <select id="eventMonthSelect" required></select>
+      </label>
+
+      <label class="check-line">
+        <input id="eventDone" type="checkbox" />
+        <span id="doneLabel">Réalisé</span>
+      </label>
+
+      <div class="dialog-actions">
+        <button type="button" class="btn ghost" id="cancelDialog">Annuler</button>
+        <button type="submit" class="btn primary">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
