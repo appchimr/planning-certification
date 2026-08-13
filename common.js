@@ -1,19 +1,20 @@
 
-const TYPE_ORDER = { TH:0, JT:1, PT:2, PR:3, TC:4, AS:5, CR:6, EV:7, EP:8 };
+const TYPE_ORDER = { TH:0, PT:1, PR:2, TC:3, AS:4, EV:5, EP:6, CR:7, JT:8, FP:9 };
 
 const TYPE_LABELS = {
   TH:"Thématique",
-  JT:"Journée thématique",
   PT:"Patient traceur",
   PR:"Parcours traceur",
   TC:"Traceur ciblé",
   AS:"Audit système",
-  CR:"Cartographie des risques",
   EV:"Évaluation",
-  EP:"Expérience patient"
+  EP:"Expérience patient",
+  CR:"Cartographie des risques",
+  JT:"Journée thématique",
+  FP:"Formation"
 };
 
-const DATED_TYPES = new Set(["JT","PT","PR","TC","AS","CR","EV","EP"]);
+const DATED_TYPES = new Set(["PT","PR","TC","AS","EV","EP","CR","JT","FP"]);
 
 const MONTHS = [
   "SEPTEMBRE 2026","OCTOBRE 2026","NOVEMBRE 2026","DÉCEMBRE 2026",
@@ -61,7 +62,7 @@ function renderLegend(targetId){
 
   el.innerHTML = "";
 
-  ["TH","JT","PT","PR","TC","AS","CR","EV","EP"].forEach(t => {
+  ["TH","PT","PR","TC","AS","EV","EP","CR","JT","FP"].forEach(t => {
     const item = document.createElement("div");
     item.className = "legend-item";
     item.innerHTML =
@@ -192,6 +193,12 @@ function eventServiceProgress(event){
     done:rows.filter(r => r.done).length,
     total:rows.length
   };
+}
+
+function monthlyTypeLabel(type){
+  return type === "TH"
+    ? "Thématique du mois"
+    : (TYPE_LABELS[type] || type);
 }
 
 function buildMonthlyServiceRow(eventId,rowData,editable=false){
@@ -359,7 +366,7 @@ function renderMonthlyPlanBody(
       `<span class="badge ${event.type}">${event.type}</span>` +
       `<div>` +
         `<strong>${escapeHtml(event.label)}</strong>` +
-        `<span>${escapeHtml(TYPE_LABELS[event.type] || event.type)}</span>` +
+        `<span>${escapeHtml(monthlyTypeLabel(event.type))}</span>` +
       `</div>`;
 
     const summary = document.createElement("div");

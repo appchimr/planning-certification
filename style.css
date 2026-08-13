@@ -14,6 +14,7 @@
   --tc:#f18b21;
   --as:#34a447;
   --cr:#6b7280;
+  --fp:#8b5cf6;
   --ev:#d9468f;
   --ep:#0f766e;
 
@@ -294,6 +295,7 @@ a{
 
 .badge.TH,.event-code.TH{background:var(--th)}
 .badge.JT,.event-code.JT{background:var(--jt)}
+.badge.FP,.event-code.FP{background:var(--fp)}
 .badge.PT,.event-code.PT{background:var(--pt)}
 .badge.PR,.event-code.PR{background:var(--pr)}
 .badge.TC,.event-code.TC{background:var(--tc)}
@@ -1363,4 +1365,29 @@ dialog::backdrop{
   font-size:9.5px;
   font-weight:750;
   line-height:1.25;
+}
+
+
+/* V4.4 — légende sur deux lignes */
+#legend,
+.legend{
+  display:grid;
+  grid-template-columns:repeat(5,max-content);
+  justify-content:center;
+  align-items:center;
+  column-gap:14px;
+  row-gap:7px;
+}
+
+@media(max-width:900px){
+  #legend,
+  .legend{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    justify-content:stretch;
+  }
+}
+
+/* Formation */
+.badge.FP,.event-code.FP{
+  background:var(--fp);
 }

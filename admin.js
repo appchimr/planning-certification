@@ -416,6 +416,56 @@ function collectMonthlyPlans(){
     .filter(row => row.service);
 }
 
+
+function syncParentCompletionFromServicePlans(month){
+  let changed = false;
+
+  state.events
+    .filter(event => event.month === month)
+    .forEach(event => {
+      const rows = servicePlanForEvent(event);
+
+      // Sans déclinaison par service, le statut global reste géré manuellement.
+      if(!rows.length){
+        return;
+      }
+
+      const allCompleted = rows.every(row =>
+        row.done && row.completedDate
+      );
+
+      if(allCompleted){
+        const latestCompletedDate = rows
+          .map(row => row.completedDate)
+          .filter(Boolean)
+          .sort()
+          .at(-1);
+
+        if(
+          latestCompletedDate &&
+          (!event.done || event.completedDate !== latestCompletedDate)
+        ){
+          event.done = true;
+          event.completedDate = latestCompletedDate;
+          changed = true;
+        }
+
+        return;
+      }
+
+      // Dès lors qu'une action est déclinée par service, le suivi mensuel
+      // devient la source du statut global : si une ligne n'est plus réalisée
+      // et datée, l'événement global repasse à "à réaliser".
+      if(event.done || event.completedDate){
+        event.done = false;
+        event.completedDate = "";
+        changed = true;
+      }
+    });
+
+  return changed;
+}
+
 function applyPlansToState(month, plans){
   const byEvent = new Map();
 
@@ -475,6 +525,18 @@ async function saveMonthlyPlan(){
     });
 
     applyPlansToState(currentMonthlyMonth, plans);
+
+    const parentChanged =
+      syncParentCompletionFromServicePlans(currentMonthlyMonth);
+
+    if(parentChanged){
+      await postApi({
+        action:"saveAll",
+        adminKey:key,
+        events:state.events
+      });
+    }
+
     localBackup();
     render();
 

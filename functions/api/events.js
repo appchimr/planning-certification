@@ -1,8 +1,9 @@
 
-const ALLOWED_TYPES = new Set(["TH","JT","PT","PR","TC","AS","CR","EV","EP"]);
+const ALLOWED_TYPES = new Set(["TH","PT","PR","TC","AS","EV","EP","CR","JT","FP"]);
 
 const TYPE_ORDER = {
-  TH:0, JT:1, PT:2, PR:3, TC:4, AS:5, CR:6, EV:7, EP:8
+  TH:0, PT:1, PR:2, TC:3, AS:4,
+  EV:5, EP:6, CR:7, JT:8, FP:9
 };
 
 const DEFAULT_SERVICES = [
@@ -363,7 +364,7 @@ export async function onRequestGet(context) {
       services:data.services,
       serverTime: new Date().toISOString(),
       storage: "cloudflare-d1",
-      schemaVersion: 2.3
+      schemaVersion: 2.4
     });
 
   } catch (err) {
