@@ -827,13 +827,13 @@ async function exportMonthlyPdf(month,events){
       backgroundColor:"#ffffff",
       useCORS:true,
       logging:false,
-      windowWidth:1400
+      windowWidth:980
     });
 
     const {jsPDF} = window.jspdf;
 
     const pdf = new jsPDF({
-      orientation:"landscape",
+      orientation:"portrait",
       unit:"mm",
       format:"a4",
       compress:true
@@ -881,7 +881,7 @@ async function exportMonthlyPdf(month,events){
       const renderedHeight = sliceHeight / pxPerMm;
 
       if(page > 0){
-        pdf.addPage("a4","landscape");
+        pdf.addPage("a4","portrait");
       }
 
       pdf.addImage(

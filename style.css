@@ -1423,7 +1423,7 @@ dialog::backdrop{
   position:fixed;
   left:-20000px;
   top:0;
-  width:1320px;
+  width:900px;
   box-sizing:border-box;
   padding:28px;
   background:#ffffff;
@@ -1448,7 +1448,7 @@ dialog::backdrop{
 }
 
 .monthly-pdf-brand img{
-  width:115px;
+  width:95px;
   height:auto;
   object-fit:contain;
 }
@@ -1464,14 +1464,14 @@ dialog::backdrop{
 .monthly-pdf-header h1{
   margin:0;
   color:#0b326d;
-  font-size:30px;
+  font-size:25px;
   line-height:1.08;
 }
 
 .monthly-pdf-header h2{
   margin:7px 0 0;
   color:#244e80;
-  font-size:23px;
+  font-size:20px;
 }
 
 .monthly-pdf-generated{
@@ -1483,7 +1483,7 @@ dialog::backdrop{
 
 .monthly-pdf-summary{
   display:grid;
-  grid-template-columns:220px 250px 1fr;
+  grid-template-columns:180px 205px 1fr;
   gap:12px;
   margin:18px 0;
 }
@@ -1553,4 +1553,48 @@ dialog::backdrop{
   .monthly-pdf-btn{
     flex:1 1 auto;
   }
+}
+
+
+/* V4.5 portrait — optimisation A4 */
+.monthly-pdf-export .monthly-table{
+  width:100%;
+  table-layout:fixed;
+}
+
+.monthly-pdf-export .monthly-table th:first-child,
+.monthly-pdf-export .monthly-table td:first-child{
+  width:28%;
+  min-width:0;
+}
+
+.monthly-pdf-export .monthly-table th:nth-child(2),
+.monthly-pdf-export .monthly-table td:nth-child(2),
+.monthly-pdf-export .monthly-table th:nth-child(3),
+.monthly-pdf-export .monthly-table td:nth-child(3){
+  width:25%;
+}
+
+.monthly-pdf-export .monthly-table th:last-child,
+.monthly-pdf-export .monthly-table td:last-child{
+  width:22%;
+}
+
+.monthly-pdf-export .monthly-table th{
+  font-size:9.5px;
+  padding:6px;
+}
+
+.monthly-pdf-export .monthly-table td{
+  font-size:10.5px;
+  padding:6px;
+  overflow-wrap:anywhere;
+}
+
+.monthly-pdf-export .monthly-event-head{
+  padding:8px 10px;
+}
+
+.monthly-pdf-export .monthly-event-title strong{
+  font-size:12px;
 }
