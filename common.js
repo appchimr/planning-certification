@@ -499,6 +499,16 @@ function buildMonthlyEvaluator(event,editable=false,evaluatorCatalog=[]){
   }
 
   const assigned = assignedEvaluatorsForEvent(event);
+  const hasServiceBreakdown =
+    servicePlanForEvent(event).length > 0;
+
+  // En administration, l'affectation globale reste disponible :
+  // elle sert de valeur par défaut pour les services.
+  // En lecture seule / PDF, si l'action est déclinée par service,
+  // on n'affiche pas les évaluateurs une seconde fois dans l'en-tête.
+  if(!editable && hasServiceBreakdown){
+    return null;
+  }
 
   const wrap = document.createElement("div");
   wrap.className = editable
