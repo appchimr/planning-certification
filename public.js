@@ -56,6 +56,23 @@ document.getElementById("closeMonthly")
 document.getElementById("closeMonthlyTop")
   ?.addEventListener("click",() => monthlyDialog.close());
 
+
+document.getElementById("btnMonthlyPdf")
+  ?.addEventListener("click",async () => {
+    try{
+      await exportMonthlyPdf(
+        currentMonthlyMonth,
+        events
+      );
+    }catch(err){
+      console.error(err);
+      alert(
+        err?.message ||
+        "Impossible de générer la synthèse PDF."
+      );
+    }
+  });
+
 document.getElementById("btnRefresh")?.addEventListener("click",refreshPublic);
 document.getElementById("btnExportPng")?.addEventListener("click",()=>exportPng().catch(()=>alert("Export PNG impossible.")));
 document.getElementById("btnExportPdf")?.addEventListener("click",()=>exportPdf().catch(()=>alert("Export PDF impossible.")));

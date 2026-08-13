@@ -820,6 +820,59 @@ document.getElementById("btnExportPng")
     exportPng().catch(() => alert("Export PNG impossible."))
   );
 
+
+document.getElementById("btnMonthlyPdf")
+  ?.addEventListener("click",async () => {
+    try{
+      if(monthlyDialog.open && currentMonthlyMonth && unlocked){
+        const draftPlans = collectMonthlyPlans();
+
+        const snapshot = JSON.parse(
+          JSON.stringify(state.events)
+        );
+
+        applyPlansToState(
+          currentMonthlyMonth,
+          draftPlans
+        );
+
+        syncParentCompletionFromServicePlans(
+          currentMonthlyMonth
+        );
+
+        await exportMonthlyPdf(
+          currentMonthlyMonth,
+          state.events
+        );
+
+        state.events = snapshot;
+        render();
+
+        if(monthlyDialog.open){
+          renderMonthlyPlanBody(
+            "monthlyPlanBody",
+            currentMonthlyMonth,
+            state.events,
+            true,
+            state.services
+          );
+        }
+
+      }else{
+        await exportMonthlyPdf(
+          currentMonthlyMonth,
+          state.events
+        );
+      }
+    }catch(err){
+      console.error(err);
+      alert(
+        err?.message ||
+        "Impossible de générer la synthèse PDF."
+      );
+    }
+  });
+
 document.getElementById("btnExportPdf")
   .addEventListener("click",() =>
     exportPdf().catch(() => alert("Export PDF impossible."))

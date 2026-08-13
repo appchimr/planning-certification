@@ -723,6 +723,192 @@ function toast(msg){
   setTimeout(() => el.classList.remove("show"),1800);
 }
 
+
+
+function monthlySummaryStats(month,events){
+  const items = monthEvents(events,month);
+
+  const completedEvents =
+    items.filter(event => event.done).length;
+
+  const serviceRows =
+    items.flatMap(event => servicePlanForEvent(event));
+
+  const completedServiceRows =
+    serviceRows.filter(row =>
+      row.done && row.completedDate
+    ).length;
+
+  return {
+    totalEvents:items.length,
+    completedEvents,
+    totalServiceRows:serviceRows.length,
+    completedServiceRows
+  };
+}
+
+function safeFileNamePart(value){
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-zA-Z0-9]+/g,"-")
+    .replace(/^-+|-+$/g,"")
+    .toLowerCase();
+}
+
+async function exportMonthlyPdf(month,events){
+  if(!month){
+    throw new Error("Aucun mois sélectionné.");
+  }
+
+  const items = monthEvents(events,month);
+  if(!items.length){
+    throw new Error("Aucune action à exporter pour ce mois.");
+  }
+
+  const stats = monthlySummaryStats(month,events);
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "monthly-pdf-export";
+  wrapper.setAttribute("aria-hidden","true");
+
+  const header = document.createElement("div");
+  header.className = "monthly-pdf-header";
+
+  header.innerHTML =
+    `<div class="monthly-pdf-brand">` +
+      `<img src="logo-chimr.jpg" alt="CHIMR">` +
+      `<div>` +
+        `<div class="monthly-pdf-kicker">CERTIFICATION HAS 2028</div>` +
+        `<h1>Synthèse mensuelle des actions</h1>` +
+        `<h2>${escapeHtml(month)}</h2>` +
+      `</div>` +
+    `</div>` +
+    `<div class="monthly-pdf-generated">` +
+      `Édité le ${new Date().toLocaleDateString("fr-FR")}` +
+    `</div>`;
+
+  const summary = document.createElement("div");
+  summary.className = "monthly-pdf-summary";
+  summary.innerHTML =
+    `<div class="monthly-pdf-stat">` +
+      `<span>Actions réalisées</span>` +
+      `<strong>${stats.completedEvents} / ${stats.totalEvents}</strong>` +
+    `</div>` +
+    `<div class="monthly-pdf-stat">` +
+      `<span>Déclinaisons réalisées</span>` +
+      `<strong>${stats.completedServiceRows} / ${stats.totalServiceRows}</strong>` +
+    `</div>` +
+    `<div class="monthly-pdf-stat monthly-pdf-stat-wide">` +
+      `<span>Objet</span>` +
+      `<strong>Suivi des actions programmées et réalisées</strong>` +
+    `</div>`;
+
+  const plan = document.createElement("div");
+  plan.id = "monthlyPdfPlan";
+  plan.className = "monthly-pdf-plan";
+
+  wrapper.append(header,summary,plan);
+  document.body.appendChild(wrapper);
+
+  try{
+    renderMonthlyPlanBody(
+      "monthlyPdfPlan",
+      month,
+      events,
+      false,
+      []
+    );
+
+    await new Promise(resolve => setTimeout(resolve,120));
+
+    const canvas = await html2canvas(wrapper,{
+      scale:2,
+      backgroundColor:"#ffffff",
+      useCORS:true,
+      logging:false,
+      windowWidth:1400
+    });
+
+    const {jsPDF} = window.jspdf;
+
+    const pdf = new jsPDF({
+      orientation:"landscape",
+      unit:"mm",
+      format:"a4",
+      compress:true
+    });
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+
+    const marginX = 8;
+    const marginY = 8;
+    const usableWidth = pageWidth - (marginX * 2);
+    const usableHeight = pageHeight - (marginY * 2);
+
+    const pxPerMm = canvas.width / usableWidth;
+    const pageSliceHeightPx =
+      Math.floor(usableHeight * pxPerMm);
+
+    let sourceY = 0;
+    let page = 0;
+
+    while(sourceY < canvas.height){
+      const sliceHeight =
+        Math.min(
+          pageSliceHeightPx,
+          canvas.height - sourceY
+        );
+
+      const slice = document.createElement("canvas");
+      slice.width = canvas.width;
+      slice.height = sliceHeight;
+
+      const ctx = slice.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0,0,slice.width,slice.height);
+
+      ctx.drawImage(
+        canvas,
+        0,sourceY,
+        canvas.width,sliceHeight,
+        0,0,
+        canvas.width,sliceHeight
+      );
+
+      const img = slice.toDataURL("image/jpeg",0.94);
+      const renderedHeight = sliceHeight / pxPerMm;
+
+      if(page > 0){
+        pdf.addPage("a4","landscape");
+      }
+
+      pdf.addImage(
+        img,
+        "JPEG",
+        marginX,
+        marginY,
+        usableWidth,
+        renderedHeight,
+        undefined,
+        "FAST"
+      );
+
+      sourceY += sliceHeight;
+      page += 1;
+    }
+
+    const filename =
+      `synthese-actions-${safeFileNamePart(month)}-CHIMR.pdf`;
+
+    pdf.save(filename);
+
+  }finally{
+    wrapper.remove();
+  }
+}
+
 async function exportCanvas(){
   const area = document.getElementById("exportArea");
 
