@@ -2018,3 +2018,221 @@ dialog::backdrop{
     justify-content:flex-start;
   }
 }
+
+
+/* V4.9 — évaluateurs par déclinaison de service */
+.monthly-table{
+  min-width:860px;
+}
+
+.monthly-table th:first-child,
+.monthly-table td:first-child{
+  min-width:150px;
+}
+
+.monthly-table th:nth-child(2),
+.monthly-table td:nth-child(2){
+  width:280px;
+}
+
+.monthly-table th:nth-child(3),
+.monthly-table th:nth-child(4),
+.monthly-table td:nth-child(3),
+.monthly-table td:nth-child(4){
+  width:165px;
+}
+
+.monthly-table th:nth-child(5),
+.monthly-table td:nth-child(5){
+  width:85px;
+  text-align:center;
+}
+
+.service-evaluator-cell{
+  position:relative;
+  vertical-align:top!important;
+}
+
+.service-evaluator-display{
+  display:flex;
+  align-items:flex-start;
+  gap:6px;
+  flex-wrap:wrap;
+}
+
+.service-evaluator-mode{
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  padding:3px 6px;
+  font-size:8.5px;
+  font-weight:850;
+  white-space:nowrap;
+}
+
+.service-evaluator-mode.inherit{
+  background:#eef4fb;
+  color:#456582;
+}
+
+.service-evaluator-mode.custom{
+  background:#fff3df;
+  color:#a65b08;
+}
+
+.service-evaluator-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+  flex:1 1 auto;
+}
+
+.service-evaluator-chip{
+  display:inline-flex;
+  border:1px solid #d3e0ee;
+  background:#f7faff;
+  border-radius:999px;
+  padding:3px 6px;
+  color:#174f89;
+  font-size:8.8px;
+  font-weight:800;
+  line-height:1.2;
+}
+
+.service-evaluator-none{
+  color:#7b8797;
+  font-size:9px;
+  font-style:italic;
+}
+
+.service-evaluator-toggle{
+  appearance:none;
+  margin-top:5px;
+  border:1px dashed #8da8c8;
+  background:#fff;
+  color:#174f89;
+  border-radius:5px;
+  padding:4px 6px;
+  font-size:8.8px;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.service-evaluator-toggle:hover{
+  background:#f1f6fc;
+}
+
+.service-evaluator-selector{
+  position:absolute;
+  left:6px;
+  top:calc(100% - 4px);
+  z-index:35;
+  width:390px;
+  max-width:75vw;
+  border:1px solid #bfcfe2;
+  border-radius:9px;
+  background:#fff;
+  padding:10px;
+  box-shadow:0 8px 24px rgba(20,42,80,.16);
+}
+
+.service-evaluator-selector[hidden]{
+  display:none!important;
+}
+
+.service-evaluator-selector-title{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  margin-bottom:8px;
+}
+
+.service-evaluator-selector-title strong{
+  color:#173f7a;
+  font-size:11px;
+}
+
+.service-evaluator-selector-title span{
+  color:#6b7d94;
+  font-size:9.5px;
+  line-height:1.3;
+}
+
+.service-evaluator-selector-grid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:6px;
+}
+
+.service-evaluator-choice{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  border:1px solid #dce5ef;
+  background:#f9fbfd;
+  border-radius:7px;
+  padding:6px 8px;
+  color:#294966;
+  font-size:10px;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.service-evaluator-choice:hover{
+  background:#f1f7fd;
+}
+
+.service-evaluator-choice input{
+  width:15px;
+  height:15px;
+  accent-color:#174f89;
+}
+
+.service-evaluator-selector-actions{
+  display:flex;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  gap:7px;
+  margin-top:8px;
+  padding-top:8px;
+  border-top:1px solid #e5ebf2;
+}
+
+.monthly-pdf-export .service-evaluator-toggle,
+.monthly-pdf-export .service-evaluator-selector{
+  display:none!important;
+}
+
+.monthly-pdf-export .monthly-table{
+  min-width:0;
+}
+
+.monthly-pdf-export .monthly-table th:first-child,
+.monthly-pdf-export .monthly-table td:first-child{
+  width:15%;
+}
+
+.monthly-pdf-export .monthly-table th:nth-child(2),
+.monthly-pdf-export .monthly-table td:nth-child(2){
+  width:31%;
+}
+
+.monthly-pdf-export .monthly-table th:nth-child(3),
+.monthly-pdf-export .monthly-table td:nth-child(3),
+.monthly-pdf-export .monthly-table th:nth-child(4),
+.monthly-pdf-export .monthly-table td:nth-child(4){
+  width:20%;
+}
+
+.monthly-pdf-export .monthly-table th:nth-child(5),
+.monthly-pdf-export .monthly-table td:nth-child(5){
+  width:14%;
+}
+
+@media(max-width:800px){
+  .service-evaluator-selector{
+    left:0;
+    width:min(390px,82vw);
+  }
+}

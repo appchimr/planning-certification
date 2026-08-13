@@ -633,12 +633,28 @@ function collectMonthlyPlans(){
         done = true;
       }
 
+      const evaluatorMode =
+        tr.dataset.evaluatorMode === "custom"
+          ? "custom"
+          : "inherit";
+
+      const evaluators =
+        evaluatorMode === "custom"
+          ? [
+              ...tr.querySelectorAll(
+                ".service-evaluator-choice-check:checked"
+              )
+            ].map(input => input.value)
+          : [];
+
       return {
         eventId:tr.dataset.eventId,
         service,
         plannedDate,
         completedDate,
-        done
+        done,
+        evaluatorMode,
+        evaluators
       };
     })
     .filter(row => row.service);
@@ -803,6 +819,159 @@ async function saveMonthlyPlan(){
 }
 
 monthlyBody.addEventListener("click",e => {
+  const serviceEvaluatorToggle =
+    e.target.closest(".service-evaluator-toggle");
+
+  if(serviceEvaluatorToggle){
+    if(!ensureUnlocked()) return;
+
+    const cell =
+      serviceEvaluatorToggle.closest(".service-evaluator-cell");
+    const panel =
+      cell?.querySelector(".service-evaluator-selector");
+
+    if(panel){
+      panel.hidden = !panel.hidden;
+    }
+    return;
+  }
+
+  const serviceEvaluatorCancel =
+    e.target.closest(".service-evaluator-cancel");
+
+  if(serviceEvaluatorCancel){
+    const panel =
+      serviceEvaluatorCancel.closest(".service-evaluator-selector");
+
+    if(panel){
+      panel.hidden = true;
+    }
+    return;
+  }
+
+  const serviceEvaluatorApply =
+    e.target.closest(".service-evaluator-apply");
+
+  if(serviceEvaluatorApply){
+    if(!ensureUnlocked()) return;
+
+    const tr =
+      serviceEvaluatorApply.closest("tr[data-event-id]");
+
+    if(!tr) return;
+
+    tr.dataset.evaluatorMode = "custom";
+
+    const event = state.events.find(
+      item => item.id === tr.dataset.eventId
+    );
+
+    const names = [
+      ...tr.querySelectorAll(
+        ".service-evaluator-choice-check:checked"
+      )
+    ].map(input => input.value);
+
+    const display =
+      tr.querySelector(".service-evaluator-display");
+
+    if(display){
+      display.innerHTML = "";
+
+      const mode = document.createElement("span");
+      mode.className = "service-evaluator-mode custom";
+      mode.textContent = "Personnalisé";
+
+      display.append(
+        mode,
+        buildEvaluatorChips(names)
+      );
+    }
+
+    const button =
+      tr.querySelector(".service-evaluator-toggle");
+
+    if(button){
+      button.textContent = "Modifier";
+    }
+
+    const inherit =
+      tr.querySelector(".service-evaluator-inherit");
+
+    if(inherit){
+      inherit.hidden = false;
+    }
+
+    const panel =
+      tr.querySelector(".service-evaluator-selector");
+
+    if(panel){
+      panel.hidden = true;
+    }
+
+    return;
+  }
+
+  const serviceEvaluatorInherit =
+    e.target.closest(".service-evaluator-inherit");
+
+  if(serviceEvaluatorInherit){
+    if(!ensureUnlocked()) return;
+
+    const tr =
+      serviceEvaluatorInherit.closest("tr[data-event-id]");
+
+    if(!tr) return;
+
+    tr.dataset.evaluatorMode = "inherit";
+
+    const event = state.events.find(
+      item => item.id === tr.dataset.eventId
+    );
+
+    const names = assignedEvaluatorsForEvent(event || {});
+
+    tr.querySelectorAll(
+      ".service-evaluator-choice-check"
+    ).forEach(input => {
+      input.checked = names.includes(input.value);
+    });
+
+    const display =
+      tr.querySelector(".service-evaluator-display");
+
+    if(display){
+      display.innerHTML = "";
+
+      const mode = document.createElement("span");
+      mode.className = "service-evaluator-mode inherit";
+      mode.textContent = "Par défaut";
+
+      display.append(
+        mode,
+        buildEvaluatorChips(names)
+      );
+    }
+
+    const button =
+      tr.querySelector(".service-evaluator-toggle");
+
+    if(button){
+      button.textContent = "Personnaliser";
+    }
+
+    serviceEvaluatorInherit.hidden = true;
+
+    const panel =
+      tr.querySelector(".service-evaluator-selector");
+
+    if(panel){
+      panel.hidden = true;
+    }
+
+    return;
+  }
+
   const evaluatorToggle =
     e.target.closest(".monthly-evaluator-toggle");
 
@@ -893,7 +1062,9 @@ monthlyBody.addEventListener("click",e => {
         service:name,
         plannedDate:"",
         completedDate:"",
-        done:false
+        done:false,
+        evaluatorMode:"inherit",
+        evaluators:[]
       });
 
       event.servicePlan = current;
@@ -969,7 +1140,9 @@ monthlyBody.addEventListener("click",e => {
         service,
         plannedDate:"",
         completedDate:"",
-        done:false
+        done:false,
+        evaluatorMode:"inherit",
+        evaluators:[]
       };
     });
 

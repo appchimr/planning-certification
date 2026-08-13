@@ -89,12 +89,28 @@ function normalizePlanRow(row) {
     throw new Error("Date de réalisation invalide.");
   }
 
+  const evaluatorMode =
+    row.evaluatorMode === "custom"
+      ? "custom"
+      : "inherit";
+
+  const evaluators =
+    evaluatorMode === "custom"
+      ? normalizeEvaluatorCatalog(
+          Array.isArray(row.evaluators)
+            ? row.evaluators
+            : []
+        )
+      : [];
+
   return {
     eventId,
     service,
     plannedDate,
     completedDate,
-    done: Boolean(row.done || completedDate)
+    done: Boolean(row.done || completedDate),
+    evaluatorMode,
+    evaluators
   };
 }
 
@@ -291,6 +307,55 @@ function makeDeleteByIds(db, table, column, ids) {
   return statements;
 }
 
+function makeServiceEvaluatorOverrideInserts(db,rows) {
+  return rows
+    .filter(row => row.evaluatorMode === "custom")
+    .map(row =>
+      db.prepare(`
+        INSERT INTO service_evaluator_overrides (
+          event_id, service, updated_at
+        )
+        VALUES (?,?,CURRENT_TIMESTAMP)
+        ON CONFLICT(event_id,service) DO UPDATE SET
+          updated_at = CURRENT_TIMESTAMP
+      `).bind(
+        row.eventId,
+        row.service
+      )
+    );
+}
+
+function makeServiceEvaluatorAssignmentInserts(db,rows) {
+  const assignments = [];
+
+  rows
+    .filter(row => row.evaluatorMode === "custom")
+    .forEach(row => {
+      row.evaluators.forEach(evaluator => {
+        assignments.push({
+          eventId:row.eventId,
+          service:row.service,
+          evaluator
+        });
+      });
+    });
+
+  return assignments.map(item =>
+    db.prepare(`
+      INSERT INTO service_evaluator_assignments (
+        event_id, service, evaluator, updated_at
+      )
+      VALUES (?,?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT(event_id,service,evaluator) DO UPDATE SET
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(
+      item.eventId,
+      item.service,
+      item.evaluator
+    )
+  );
+}
+
 async function readAll(db) {
   const [
     eventResult,
@@ -298,7 +363,9 @@ async function readAll(db) {
     serviceResult,
     monthSettingResult,
     evaluatorResult,
-    assignmentResult
+    assignmentResult,
+    serviceOverrideResult,
+    serviceEvaluatorResult
   ] = await db.batch([
     db.prepare(`
       SELECT
@@ -346,21 +413,69 @@ async function readAll(db) {
         event_id AS eventId,
         evaluator
       FROM event_assignments
+      ORDER BY event_id ASC, evaluator ASC
+    `),
+    db.prepare(`
+      SELECT
+        event_id AS eventId,
+        service
+      FROM service_evaluator_overrides
+    `),
+    db.prepare(`
+      SELECT
+        event_id AS eventId,
+        service,
+        evaluator
+      FROM service_evaluator_assignments
+      ORDER BY event_id ASC, service ASC, evaluator ASC
     `)
   ]);
+
+  const overrideKeys = new Set(
+    (serviceOverrideResult.results || []).map(row =>
+      `${String(row.eventId)}::${String(row.service)}`
+    )
+  );
+
+  const serviceEvaluatorMap = new Map();
+
+  (serviceEvaluatorResult.results || []).forEach(row => {
+    const key =
+      `${String(row.eventId)}::${String(row.service)}`;
+
+    if(!serviceEvaluatorMap.has(key)){
+      serviceEvaluatorMap.set(key,[]);
+    }
+
+    serviceEvaluatorMap
+      .get(key)
+      .push(String(row.evaluator || ""));
+  });
 
   const planMap = new Map();
 
   (planResult.results || []).forEach(row => {
-    if (!planMap.has(row.eventId)) {
-      planMap.set(row.eventId, []);
+    const eventId = String(row.eventId);
+    const service = String(row.service);
+    const key = `${eventId}::${service}`;
+
+    if (!planMap.has(eventId)) {
+      planMap.set(eventId, []);
     }
 
-    planMap.get(row.eventId).push({
-      service:String(row.service),
+    planMap.get(eventId).push({
+      service,
       plannedDate:row.plannedDate || "",
       completedDate:row.completedDate || "",
-      done:Number(row.done) === 1
+      done:Number(row.done) === 1,
+      evaluatorMode:
+        overrideKeys.has(key)
+          ? "custom"
+          : "inherit",
+      evaluators:
+        overrideKeys.has(key)
+          ? (serviceEvaluatorMap.get(key) || [])
+          : []
     });
   });
 
@@ -431,7 +546,7 @@ export async function onRequestGet(context) {
       evaluators:data.evaluators,
       serverTime: new Date().toISOString(),
       storage: "cloudflare-d1",
-      schemaVersion: 2.7
+      schemaVersion: 2.8
     });
 
   } catch (err) {
@@ -536,15 +651,34 @@ async function saveMonthPlan(
       validIds.has(item.eventId)
     );
 
-  const evaluatorNames = normalizeEvaluatorCatalog(
-    filteredAssignments
+  const evaluatorNames = normalizeEvaluatorCatalog([
+    ...filteredAssignments
       .map(item => item.evaluator)
-      .filter(Boolean)
-  );
+      .filter(Boolean),
+    ...filteredPlans.flatMap(row =>
+      row.evaluatorMode === "custom"
+        ? row.evaluators
+        : []
+    )
+  ]);
 
   const statements = [
     ...makeServiceUpserts(db,services),
     ...makeEvaluatorCatalogUpserts(db,evaluatorNames),
+
+    db.prepare(`
+      DELETE FROM service_evaluator_assignments
+      WHERE event_id IN (
+        SELECT id FROM events WHERE month = ?
+      )
+    `).bind(month),
+
+    db.prepare(`
+      DELETE FROM service_evaluator_overrides
+      WHERE event_id IN (
+        SELECT id FROM events WHERE month = ?
+      )
+    `).bind(month),
 
     db.prepare(`
       DELETE FROM monthly_actions
@@ -554,6 +688,14 @@ async function saveMonthPlan(
     `).bind(month),
 
     ...makePlanInserts(db,filteredPlans),
+    ...makeServiceEvaluatorOverrideInserts(
+      db,
+      filteredPlans
+    ),
+    ...makeServiceEvaluatorAssignmentInserts(
+      db,
+      filteredPlans
+    ),
 
     db.prepare(`
       DELETE FROM event_assignments
@@ -572,8 +714,11 @@ async function saveMonthPlan(
 
   return {
     plans:filteredPlans.length,
-    evaluatorAssignments:
-      filteredAssignments.filter(item => item.evaluator).length
+    evaluatorAssignments:filteredAssignments.length,
+    serviceEvaluatorOverrides:
+      filteredPlans.filter(
+        row => row.evaluatorMode === "custom"
+      ).length
   };
 }
 
@@ -793,15 +938,25 @@ async function restoreAll(
 
   const evaluatorCatalog = normalizeEvaluatorCatalog([
     ...(Array.isArray(rawEvaluators) ? rawEvaluators : []),
-    ...assignments.map(item => item.evaluator)
+    ...assignments.map(item => item.evaluator),
+    ...plans.flatMap(row =>
+      row.evaluatorMode === "custom"
+        ? row.evaluators
+        : []
+    )
   ]);
 
   const statements = [
+    db.prepare("DELETE FROM service_evaluator_assignments"),
+    db.prepare("DELETE FROM service_evaluator_overrides"),
     db.prepare("DELETE FROM monthly_actions"),
     db.prepare("DELETE FROM event_assignments"),
     db.prepare("DELETE FROM events"),
+
     ...makeEventUpserts(db,events),
     ...makePlanInserts(db,plans),
+    ...makeServiceEvaluatorOverrideInserts(db,plans),
+    ...makeServiceEvaluatorAssignmentInserts(db,plans),
     ...makeEvaluatorAssignmentInserts(db,assignments)
   ];
 
@@ -834,7 +989,11 @@ async function restoreAll(
   return {
     events:events.length,
     plans:plans.length,
-    evaluatorAssignments:assignments.length
+    evaluatorAssignments:assignments.length,
+    serviceEvaluatorOverrides:
+      plans.filter(row =>
+        row.evaluatorMode === "custom"
+      ).length
   };
 }
 

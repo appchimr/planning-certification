@@ -181,7 +181,16 @@ function servicePlanForEvent(event){
           service:String(row.service || "").trim(),
           plannedDate:row.plannedDate || "",
           completedDate:row.completedDate || "",
-          done:!!row.done
+          done:!!row.done,
+          evaluatorMode:
+            row.evaluatorMode === "custom"
+              ? "custom"
+              : "inherit",
+          evaluators:Array.isArray(row.evaluators)
+            ? row.evaluators
+                .map(name => String(name || "").trim())
+                .filter(Boolean)
+            : []
         }))
         .filter(row => row.service)
     : [];
@@ -201,10 +210,138 @@ function monthlyTypeLabel(type){
     : (TYPE_LABELS[type] || type);
 }
 
-function buildMonthlyServiceRow(eventId,rowData,editable=false){
+function effectiveServiceEvaluators(event,rowData){
+  return rowData.evaluatorMode === "custom"
+    ? (Array.isArray(rowData.evaluators) ? rowData.evaluators : [])
+    : assignedEvaluatorsForEvent(event);
+}
+
+function buildEvaluatorChips(names){
+  const wrap = document.createElement("div");
+  wrap.className = "service-evaluator-chips";
+
+  if(!names.length){
+    const empty = document.createElement("span");
+    empty.className = "service-evaluator-none";
+    empty.textContent = "Non attribué";
+    wrap.appendChild(empty);
+    return wrap;
+  }
+
+  names.forEach(name => {
+    const chip = document.createElement("span");
+    chip.className = "service-evaluator-chip";
+    chip.textContent = name;
+    wrap.appendChild(chip);
+  });
+
+  return wrap;
+}
+
+function buildServiceEvaluatorCell(
+  event,
+  rowData,
+  editable=false,
+  evaluatorCatalog=[]
+){
+  const cell = document.createElement("td");
+  cell.className = "service-evaluator-cell";
+
+  const effective = effectiveServiceEvaluators(event,rowData);
+  const isCustom = rowData.evaluatorMode === "custom";
+
+  const display = document.createElement("div");
+  display.className = "service-evaluator-display";
+
+  const mode = document.createElement("span");
+  mode.className =
+    `service-evaluator-mode ${isCustom ? "custom" : "inherit"}`;
+  mode.textContent = isCustom ? "Personnalisé" : "Par défaut";
+
+  display.append(mode,buildEvaluatorChips(effective));
+  cell.appendChild(display);
+
+  if(editable){
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "service-evaluator-toggle";
+    button.textContent = isCustom ? "Modifier" : "Personnaliser";
+
+    const panel = document.createElement("div");
+    panel.className = "service-evaluator-selector";
+    panel.hidden = true;
+
+    const title = document.createElement("div");
+    title.className = "service-evaluator-selector-title";
+    title.innerHTML =
+      `<strong>Évaluateurs pour ${escapeHtml(rowData.service)}</strong>` +
+      `<span>Cette sélection remplacera les évaluateurs par défaut uniquement pour ce service.</span>`;
+
+    const grid = document.createElement("div");
+    grid.className = "service-evaluator-selector-grid";
+
+    const initiallySelected = isCustom
+      ? rowData.evaluators
+      : assignedEvaluatorsForEvent(event);
+
+    (evaluatorCatalog || []).forEach(name => {
+      const label = document.createElement("label");
+      label.className = "service-evaluator-choice";
+
+      const check = document.createElement("input");
+      check.type = "checkbox";
+      check.className = "service-evaluator-choice-check";
+      check.value = name;
+      check.checked = initiallySelected.includes(name);
+
+      const text = document.createElement("span");
+      text.textContent = name;
+
+      label.append(check,text);
+      grid.appendChild(label);
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "service-evaluator-selector-actions";
+
+    const inherit = document.createElement("button");
+    inherit.type = "button";
+    inherit.className = "btn ghost service-evaluator-inherit";
+    inherit.textContent = "Revenir aux évaluateurs par défaut";
+    inherit.hidden = !isCustom;
+
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "btn ghost service-evaluator-cancel";
+    cancel.textContent = "Annuler";
+
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.className = "btn primary service-evaluator-apply";
+    apply.textContent = "Appliquer";
+
+    actions.append(inherit,cancel,apply);
+    panel.append(title,grid,actions);
+
+    cell.append(button,panel);
+  }
+
+  return cell;
+}
+
+function buildMonthlyServiceRow(
+  event,
+  rowData,
+  editable=false,
+  evaluatorCatalog=[]
+){
   const tr = document.createElement("tr");
-  tr.dataset.eventId = eventId;
+  tr.dataset.eventId = event.id;
   tr.dataset.service = rowData.service;
+  tr.dataset.evaluatorMode =
+    rowData.evaluatorMode === "custom"
+      ? "custom"
+      : "inherit";
 
   if(rowData.done){
     tr.classList.add("monthly-row-done");
@@ -213,6 +350,13 @@ function buildMonthlyServiceRow(eventId,rowData,editable=false){
   const service = document.createElement("td");
   service.className = "monthly-service";
   service.textContent = rowData.service;
+
+  const evaluator = buildServiceEvaluatorCell(
+    event,
+    rowData,
+    editable,
+    evaluatorCatalog
+  );
 
   const planned = document.createElement("td");
   const completed = document.createElement("td");
@@ -253,7 +397,7 @@ function buildMonthlyServiceRow(eventId,rowData,editable=false){
       : '<span class="monthly-status pending">À réaliser</span>';
   }
 
-  tr.append(service,planned,completed,done);
+  tr.append(service,evaluator,planned,completed,done);
   return tr;
 }
 
@@ -527,6 +671,7 @@ function renderMonthlyPlanBody(
       table.innerHTML =
         `<thead><tr>` +
           `<th>Service</th>` +
+          `<th>Évaluateur(s)</th>` +
           `<th>Date prévisionnelle</th>` +
           `<th>Date de réalisation</th>` +
           `<th>Réalisé</th>` +
@@ -537,9 +682,10 @@ function renderMonthlyPlanBody(
       rows.forEach(rowData => {
         tbody.appendChild(
           buildMonthlyServiceRow(
-            event.id,
+            event,
             rowData,
-            editable
+            editable,
+            evaluatorCatalog
           )
         );
       });
