@@ -1,5 +1,5 @@
 
-const TYPE_ORDER = { TH:0, JT:1, PT:2, PR:3, TC:4, AS:5, EV:6, EP:7 };
+const TYPE_ORDER = { TH:0, JT:1, PT:2, PR:3, TC:4, AS:5, CR:6, EV:7, EP:8 };
 
 const TYPE_LABELS = {
   TH:"Thématique",
@@ -8,11 +8,12 @@ const TYPE_LABELS = {
   PR:"Parcours traceur",
   TC:"Traceur ciblé",
   AS:"Audit système",
+  CR:"Cartographie des risques",
   EV:"Évaluation",
   EP:"Expérience patient"
 };
 
-const DATED_TYPES = new Set(["JT","PT","PR","TC","AS","EV","EP"]);
+const DATED_TYPES = new Set(["JT","PT","PR","TC","AS","CR","EV","EP"]);
 
 const MONTHS = [
   "SEPTEMBRE 2026","OCTOBRE 2026","NOVEMBRE 2026","DÉCEMBRE 2026",
@@ -60,7 +61,7 @@ function renderLegend(targetId){
 
   el.innerHTML = "";
 
-  ["TH","JT","PT","PR","TC","AS","EV","EP"].forEach(t => {
+  ["TH","JT","PT","PR","TC","AS","CR","EV","EP"].forEach(t => {
     const item = document.createElement("div");
     item.className = "legend-item";
     item.innerHTML =
@@ -144,21 +145,32 @@ function formatDateFr(iso){
 }
 
 function eventDateText(e){
-  if(!DATED_TYPES.has(e.type)) return "";
+  if(!DATED_TYPES.has(e.type)){
+    return {text:"",status:""};
+  }
 
   if(e.done && e.completedDate){
-    return `Réalisé le ${formatDateFr(e.completedDate)}`;
+    return {
+      text:`Réalisé le ${formatDateFr(e.completedDate)}`,
+      status:"completed"
+    };
   }
 
   if(e.plannedDate){
-    return `Prévu le ${formatDateFr(e.plannedDate)}`;
+    return {
+      text:`Prévu le ${formatDateFr(e.plannedDate)}`,
+      status:"planned"
+    };
   }
 
   if(e.done){
-    return "Réalisé";
+    return {
+      text:"Réalisé",
+      status:"completed"
+    };
   }
 
-  return "";
+  return {text:"",status:""};
 }
 
 function servicePlanForEvent(event){
@@ -451,11 +463,12 @@ function buildEventRow(e, editable=false, handlers={}){
   label.textContent = e.label;
   content.appendChild(label);
 
-  const dateText = eventDateText(e);
-  if(dateText){
+  const dateInfo = eventDateText(e);
+  if(dateInfo.text){
     const date = document.createElement("span");
-    date.className = "event-date";
-    date.textContent = dateText;
+    date.className =
+      `event-date ${dateInfo.status === "completed" ? "event-date-completed" : "event-date-planned"}`;
+    date.textContent = dateInfo.text;
     content.appendChild(date);
   }
 

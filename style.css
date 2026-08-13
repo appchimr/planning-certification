@@ -13,6 +13,7 @@
   --pr:#3275d8;
   --tc:#f18b21;
   --as:#34a447;
+  --cr:#6b7280;
   --ev:#d9468f;
   --ep:#0f766e;
 
@@ -297,6 +298,7 @@ a{
 .badge.PR,.event-code.PR{background:var(--pr)}
 .badge.TC,.event-code.TC{background:var(--tc)}
 .badge.AS,.event-code.AS{background:var(--as)}
+.badge.CR,.event-code.CR{background:var(--cr)}
 .badge.EV,.event-code.EV{background:var(--ev)}
 .badge.EP,.event-code.EP{background:var(--ep)}
 
@@ -1336,4 +1338,29 @@ dialog::backdrop{
     align-items:stretch;
     flex-direction:column;
   }
+}
+
+
+/* V4.3 — distinction visuelle des dates */
+.event-date-planned{
+  color:#2f6fae;
+  background:#eef5fc;
+  border:1px solid #d4e5f5;
+}
+
+.event-date-completed{
+  color:#24733f;
+  background:#edf8f1;
+  border:1px solid #d0ead9;
+}
+
+.event-date{
+  display:inline-block;
+  width:max-content;
+  margin-top:3px;
+  padding:2px 6px;
+  border-radius:5px;
+  font-size:9.5px;
+  font-weight:750;
+  line-height:1.25;
 }
