@@ -1598,3 +1598,9 @@ dialog::backdrop{
 .monthly-pdf-export .monthly-event-title strong{
   font-size:12px;
 }
+
+
+/* V4.5.1 — la thématique du mois ne se décline pas par service */
+.monthly-theme-content{
+  display:none;
+}

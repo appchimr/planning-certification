@@ -354,7 +354,8 @@ function renderMonthlyPlanBody(
     block.className = "monthly-event";
     block.dataset.eventId = event.id;
 
-    const rows = servicePlanForEvent(event);
+    const isTheme = event.type === "TH";
+    const rows = isTheme ? [] : servicePlanForEvent(event);
     const progress = eventServiceProgress(event);
 
     const head = document.createElement("div");
@@ -369,24 +370,30 @@ function renderMonthlyPlanBody(
         `<span>${escapeHtml(monthlyTypeLabel(event.type))}</span>` +
       `</div>`;
 
-    const summary = document.createElement("div");
-    summary.className = "monthly-event-summary";
-
-    if(rows.length){
-      summary.innerHTML =
-        `<strong>${progress.done} / ${progress.total}</strong>` +
-        `<span>service${progress.total > 1 ? "s" : ""} réalisé${progress.total > 1 ? "s" : ""}</span>`;
+    if(isTheme){
+      head.append(title);
     }else{
-      summary.innerHTML =
-        `<span>Non décliné par service</span>`;
-    }
+      const summary = document.createElement("div");
+      summary.className = "monthly-event-summary";
 
-    head.append(title,summary);
+      if(rows.length){
+        summary.innerHTML =
+          `<strong>${progress.done} / ${progress.total}</strong>` +
+          `<span>service${progress.total > 1 ? "s" : ""} réalisé${progress.total > 1 ? "s" : ""}</span>`;
+      }else{
+        summary.innerHTML =
+          `<span>Non décliné par service</span>`;
+      }
+
+      head.append(title,summary);
+    }
 
     const content = document.createElement("div");
     content.className = "monthly-event-content";
 
-    if(rows.length){
+    if(isTheme){
+      content.classList.add("monthly-theme-content");
+    }else if(rows.length){
       const tableWrap = document.createElement("div");
       tableWrap.className = "monthly-table-wrap";
 
@@ -417,7 +424,7 @@ function renderMonthlyPlanBody(
       tableWrap.appendChild(table);
       content.appendChild(tableWrap);
 
-    }else{
+    }else if(!isTheme){
       const empty = document.createElement("div");
       empty.className = "monthly-event-empty";
       empty.textContent = editable
@@ -427,7 +434,7 @@ function renderMonthlyPlanBody(
       content.appendChild(empty);
     }
 
-    if(editable){
+    if(editable && !isTheme){
       const tools = document.createElement("div");
       tools.className = "monthly-event-tools no-export";
 
