@@ -253,12 +253,16 @@ function buildServiceEvaluatorCell(
   const display = document.createElement("div");
   display.className = "service-evaluator-display";
 
-  const mode = document.createElement("span");
-  mode.className =
-    `service-evaluator-mode ${isCustom ? "custom" : "inherit"}`;
-  mode.textContent = isCustom ? "Personnalisé" : "Par défaut";
+  if(isCustom){
+    const mode = document.createElement("span");
+    mode.className = "service-evaluator-mode custom";
+    mode.textContent = "Personnalisé";
+    display.appendChild(mode);
+  }
 
-  display.append(mode,buildEvaluatorChips(effective));
+  display.appendChild(
+    buildEvaluatorChips(effective)
+  );
   cell.appendChild(display);
 
   if(editable){

@@ -2236,3 +2236,9 @@ dialog::backdrop{
     width:min(390px,82vw);
   }
 }
+
+
+/* V4.9.1 — affichage allégé des évaluateurs */
+.service-evaluator-mode.inherit{
+  display:none!important;
+}

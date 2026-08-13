@@ -943,12 +943,7 @@ monthlyBody.addEventListener("click",e => {
     if(display){
       display.innerHTML = "";
 
-      const mode = document.createElement("span");
-      mode.className = "service-evaluator-mode inherit";
-      mode.textContent = "Par défaut";
-
-      display.append(
-        mode,
+      display.appendChild(
         buildEvaluatorChips(names)
       );
     }
