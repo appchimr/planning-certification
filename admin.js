@@ -1,7 +1,7 @@
 
 const LOCAL_BACKUP_KEY = "chimr_has_2028_admin_backup_d1_v4";
 
-let state = {events:[],services:[],monthSettings:[]};
+let state = {events:[],services:[],monthSettings:[],evaluators:[]};
 let unlocked = false;
 let currentMonthlyMonth = "";
 
@@ -160,6 +160,125 @@ async function saveUpgradeSetting(forceVisible=null){
   }
 }
 
+function renderEvaluatorCatalogAdmin(){
+  const panel = document.getElementById("evaluatorCatalogAdmin");
+  const list = document.getElementById("evaluatorCatalogList");
+
+  if(!panel || !list){
+    return;
+  }
+
+  panel.hidden = !unlocked;
+
+  if(!unlocked){
+    return;
+  }
+
+  list.innerHTML = "";
+
+  state.evaluators.forEach(name => {
+    const chip = document.createElement("span");
+    chip.className = "evaluator-chip";
+    chip.textContent = name;
+    list.appendChild(chip);
+  });
+}
+
+function collectMonthlyEvaluatorAssignments(){
+  return [...monthlyBody.querySelectorAll(".evaluator-selector")]
+    .map(panel => ({
+      eventId:panel.dataset.eventId,
+      evaluators:[
+        ...panel.querySelectorAll(".evaluator-choice-check:checked")
+      ].map(input => input.value)
+    }));
+}
+
+function applyEvaluatorAssignmentsToState(month,assignments){
+  const map = new Map(
+    assignments.map(item => [
+      item.eventId,
+      Array.isArray(item.evaluators)
+        ? item.evaluators
+        : []
+    ])
+  );
+
+  state.events
+    .filter(event => event.month === month && event.type !== "TH")
+    .forEach(event => {
+      event.evaluators = map.get(event.id) || [];
+      delete event.evaluator;
+    });
+}
+
+async function addEvaluatorToCatalog(){
+  if(!ensureUnlocked()) return;
+
+  const input = document.getElementById("newEvaluatorName");
+  const name = String(input?.value || "").trim();
+
+  if(!name){
+    toast("Saisissez le nom de l’évaluateur.");
+    input?.focus();
+    return;
+  }
+
+  const exists = state.evaluators.some(
+    item => item.toLocaleLowerCase("fr") === name.toLocaleLowerCase("fr")
+  );
+
+  if(exists){
+    toast("Cet évaluateur existe déjà dans la liste.");
+    input?.select();
+    return;
+  }
+
+  // Conserver les saisies en cours avant de reconstruire la fenêtre.
+  applyPlansToState(
+    currentMonthlyMonth,
+    collectMonthlyPlans()
+  );
+  applyEvaluatorAssignmentsToState(
+    currentMonthlyMonth,
+    collectMonthlyEvaluatorAssignments()
+  );
+
+  try{
+    const key = sessionStorage.getItem("HAS_ADMIN_KEY");
+
+    const data = await postApi({
+      action:"addEvaluator",
+      adminKey:key,
+      name
+    });
+
+    state.evaluators = Array.isArray(data.evaluators)
+      ? data.evaluators
+      : [...state.evaluators,name];
+
+    if(input){
+      input.value = "";
+    }
+
+    renderEvaluatorCatalogAdmin();
+
+    renderMonthlyPlanBody(
+      "monthlyPlanBody",
+      currentMonthlyMonth,
+      state.events,
+      true,
+      state.services,
+      state.evaluators
+    );
+
+    toast(`Évaluateur « ${name} » ajouté.`);
+  }catch(err){
+    console.error(err);
+    toast(err?.message || "Impossible d’ajouter l’évaluateur.");
+  }
+}
+
 function handlers(){
   return {
     add: month => {
@@ -263,10 +382,12 @@ function setUnlocked(value){
       currentMonthlyMonth,
       state.events,
       value,
-      state.services
+      state.services,
+      state.evaluators
     );
     btnSaveMonthly.hidden = !value;
     renderMonthUpgradeAdmin(currentMonthlyMonth);
+    renderEvaluatorCatalogAdmin();
   }
 }
 
@@ -320,6 +441,9 @@ async function loadAdmin(){
       services:Array.isArray(data.services) ? data.services : [],
       monthSettings:Array.isArray(data.monthSettings)
         ? data.monthSettings
+        : [],
+      evaluators:Array.isArray(data.evaluators)
+        ? data.evaluators
         : []
     };
     localBackup();
@@ -480,12 +604,14 @@ function openMonthlyAdmin(month){
     month,
     state.events,
     unlocked,
-    state.services
+    state.services,
+    state.evaluators
   );
 
   btnSaveMonthly.hidden = !unlocked;
   monthlyDialog.showModal();
   renderMonthUpgradeAdmin(month);
+  renderEvaluatorCatalogAdmin();
 }
 
 function collectMonthlyPlans(){
@@ -598,6 +724,8 @@ async function saveMonthlyPlan(){
 
   const key = sessionStorage.getItem("HAS_ADMIN_KEY");
   const plans = collectMonthlyPlans();
+  const evaluatorAssignments =
+    collectMonthlyEvaluatorAssignments();
 
   const seen = new Set();
   for(const row of plans){
@@ -623,10 +751,15 @@ async function saveMonthlyPlan(){
       adminKey:key,
       month:currentMonthlyMonth,
       plans,
-      services:state.services
+      services:state.services,
+      evaluatorAssignments
     });
 
     applyPlansToState(currentMonthlyMonth, plans);
+    applyEvaluatorAssignmentsToState(
+      currentMonthlyMonth,
+      evaluatorAssignments
+    );
 
     const parentChanged =
       syncParentCompletionFromServicePlans(currentMonthlyMonth);
@@ -670,6 +803,30 @@ async function saveMonthlyPlan(){
 }
 
 monthlyBody.addEventListener("click",e => {
+  const evaluatorToggle =
+    e.target.closest(".monthly-evaluator-toggle");
+
+  if(evaluatorToggle){
+    if(!ensureUnlocked()) return;
+
+    const block = evaluatorToggle.closest(".monthly-event");
+    const panel = block?.querySelector(".evaluator-selector");
+
+    if(panel){
+      panel.hidden = !panel.hidden;
+    }
+    return;
+  }
+
+  const evaluatorClose =
+    e.target.closest(".evaluator-selector-close");
+
+  if(evaluatorClose){
+    const panel = evaluatorClose.closest(".evaluator-selector");
+    if(panel) panel.hidden = true;
+    return;
+  }
+
   const decline = e.target.closest(".monthly-decline-services");
 
   if(decline){
@@ -747,7 +904,8 @@ monthlyBody.addEventListener("click",e => {
       currentMonthlyMonth,
       state.events,
       true,
-      state.services
+      state.services,
+      state.evaluators
     );
 
     const newPanel = monthlyBody.querySelector(
@@ -820,7 +978,8 @@ monthlyBody.addEventListener("click",e => {
       currentMonthlyMonth,
       state.events,
       true,
-      state.services
+      state.services,
+      state.evaluators
     );
 
     toast("Sélection des services appliquée.");
@@ -938,6 +1097,11 @@ document.getElementById("btnMonthlyPdf")
           draftPlans
         );
 
+        applyEvaluatorAssignmentsToState(
+          currentMonthlyMonth,
+          collectMonthlyEvaluatorAssignments()
+        );
+
         syncParentCompletionFromServicePlans(
           currentMonthlyMonth
         );
@@ -956,7 +1120,8 @@ document.getElementById("btnMonthlyPdf")
             currentMonthlyMonth,
             state.events,
             true,
-            state.services
+            state.services,
+            state.evaluators
           );
         }
 
@@ -1022,7 +1187,10 @@ document.getElementById("fileImport")
         services:Array.isArray(parsed.services) ? parsed.services : state.services,
         monthSettings:Array.isArray(parsed.monthSettings)
           ? parsed.monthSettings
-          : state.monthSettings
+          : state.monthSettings,
+        evaluators:Array.isArray(parsed.evaluators)
+          ? parsed.evaluators
+          : state.evaluators
       });
 
       state = {
@@ -1032,7 +1200,10 @@ document.getElementById("fileImport")
           : state.services,
         monthSettings:Array.isArray(parsed.monthSettings)
           ? parsed.monthSettings
-          : state.monthSettings
+          : state.monthSettings,
+        evaluators:Array.isArray(parsed.evaluators)
+          ? parsed.evaluators
+          : state.evaluators
       };
       localBackup();
       render();
@@ -1084,6 +1255,17 @@ document.getElementById("monthUpgradeVisible")
         "month-upgrade-admin-hidden-state",
         !event.target.checked
       );
+  });
+
+document.getElementById("btnAddEvaluator")
+  ?.addEventListener("click",addEvaluatorToCatalog);
+
+document.getElementById("newEvaluatorName")
+  ?.addEventListener("keydown",event => {
+    if(event.key === "Enter"){
+      event.preventDefault();
+      addEvaluatorToCatalog();
+    }
   });
 
 fillMonths();

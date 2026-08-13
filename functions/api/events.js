@@ -292,44 +292,62 @@ function makeDeleteByIds(db, table, column, ids) {
 }
 
 async function readAll(db) {
-  const [eventResult,planResult,serviceResult,monthSettingResult] =
-    await db.batch([
-      db.prepare(`
-        SELECT
-          id, month, type, label, done,
-          planned_date AS plannedDate,
-          completed_date AS completedDate,
-          updated_at AS updatedAt
-        FROM events
-        ORDER BY sort_order ASC, label COLLATE NOCASE ASC
-      `),
-      db.prepare(`
-        SELECT
-          event_id AS eventId,
-          service,
-          planned_date AS plannedDate,
-          completed_date AS completedDate,
-          done
-        FROM monthly_actions
-        ORDER BY event_id ASC, service ASC
-      `),
-      db.prepare(`
-        SELECT name
-        FROM service_catalog
-        WHERE active = 1
-        ORDER BY sort_order ASC, name COLLATE NOCASE ASC
-      `),
-      db.prepare(`
-        SELECT
-          month,
-          upgrade_visible AS upgradeVisible,
-          upgrade_title AS upgradeTitle,
-          upgrade_subtitle AS upgradeSubtitle,
-          updated_at AS updatedAt
-        FROM month_settings
-        ORDER BY month ASC
-      `)
-    ]);
+  const [
+    eventResult,
+    planResult,
+    serviceResult,
+    monthSettingResult,
+    evaluatorResult,
+    assignmentResult
+  ] = await db.batch([
+    db.prepare(`
+      SELECT
+        id, month, type, label, done,
+        planned_date AS plannedDate,
+        completed_date AS completedDate,
+        updated_at AS updatedAt
+      FROM events
+      ORDER BY sort_order ASC, label COLLATE NOCASE ASC
+    `),
+    db.prepare(`
+      SELECT
+        event_id AS eventId,
+        service,
+        planned_date AS plannedDate,
+        completed_date AS completedDate,
+        done
+      FROM monthly_actions
+      ORDER BY event_id ASC, service ASC
+    `),
+    db.prepare(`
+      SELECT name
+      FROM service_catalog
+      WHERE active = 1
+      ORDER BY sort_order ASC, name COLLATE NOCASE ASC
+    `),
+    db.prepare(`
+      SELECT
+        month,
+        upgrade_visible AS upgradeVisible,
+        upgrade_title AS upgradeTitle,
+        upgrade_subtitle AS upgradeSubtitle,
+        updated_at AS updatedAt
+      FROM month_settings
+      ORDER BY month ASC
+    `),
+    db.prepare(`
+      SELECT name
+      FROM evaluator_catalog
+      WHERE active = 1
+      ORDER BY sort_order ASC, name COLLATE NOCASE ASC
+    `),
+    db.prepare(`
+      SELECT
+        event_id AS eventId,
+        evaluator
+      FROM event_assignments
+    `)
+  ]);
 
   const planMap = new Map();
 
@@ -346,6 +364,23 @@ async function readAll(db) {
     });
   });
 
+  const evaluatorMap = new Map();
+
+  (assignmentResult.results || []).forEach(row => {
+    const eventId = String(row.eventId);
+    const evaluator = String(row.evaluator || "").trim();
+
+    if(!evaluator){
+      return;
+    }
+
+    if(!evaluatorMap.has(eventId)){
+      evaluatorMap.set(eventId,[]);
+    }
+
+    evaluatorMap.get(eventId).push(evaluator);
+  });
+
   const events = (eventResult.results || []).map(row => ({
     id:String(row.id),
     month:String(row.month),
@@ -355,6 +390,7 @@ async function readAll(db) {
     plannedDate:row.plannedDate || "",
     completedDate:row.completedDate || "",
     updatedAt:row.updatedAt || "",
+    evaluators:evaluatorMap.get(String(row.id)) || [],
     servicePlan:planMap.get(String(row.id)) || []
   }));
 
@@ -371,7 +407,16 @@ async function readAll(db) {
       updatedAt:row.updatedAt || ""
     }));
 
-  return {events,services,monthSettings};
+  const evaluators = (evaluatorResult.results || [])
+    .map(row => String(row.name))
+    .filter(Boolean);
+
+  return {
+    events,
+    services,
+    monthSettings,
+    evaluators
+  };
 }
 
 export async function onRequestGet(context) {
@@ -383,9 +428,10 @@ export async function onRequestGet(context) {
       events:data.events,
       services:data.services,
       monthSettings:data.monthSettings,
+      evaluators:data.evaluators,
       serverTime: new Date().toISOString(),
       storage: "cloudflare-d1",
-      schemaVersion: 2.5
+      schemaVersion: 2.7
     });
 
   } catch (err) {
@@ -447,7 +493,13 @@ async function saveAllEvents(db, rawEvents) {
   return events.length;
 }
 
-async function saveMonthPlan(db, month, rawPlans, rawServices) {
+async function saveMonthPlan(
+  db,
+  month,
+  rawPlans,
+  rawServices,
+  rawEvaluatorAssignments
+) {
   month = String(month || "").trim();
 
   if (!month || month.length > 40) {
@@ -464,7 +516,8 @@ async function saveMonthPlan(db, month, rawPlans, rawServices) {
 
   const plans = rawPlans.map(normalizePlanRow);
   const services = normalizeServiceCatalog(rawServices);
-  const monthSettings = normalizeMonthSettings(rawMonthSettings);
+  const evaluatorAssignments =
+    normalizeEvaluatorAssignments(rawEvaluatorAssignments);
 
   const eventResult = await db
     .prepare("SELECT id FROM events WHERE month = ?")
@@ -472,25 +525,164 @@ async function saveMonthPlan(db, month, rawPlans, rawServices) {
     .all();
 
   const validIds = new Set(
-    (eventResult.results || []).map(r => String(r.id))
+    (eventResult.results || []).map(row => String(row.id))
   );
 
-  const filtered = plans.filter(p => validIds.has(p.eventId));
+  const filteredPlans =
+    plans.filter(plan => validIds.has(plan.eventId));
+
+  const filteredAssignments =
+    evaluatorAssignments.filter(item =>
+      validIds.has(item.eventId)
+    );
+
+  const evaluatorNames = normalizeEvaluatorCatalog(
+    filteredAssignments
+      .map(item => item.evaluator)
+      .filter(Boolean)
+  );
 
   const statements = [
-    ...makeServiceUpserts(db, services),
+    ...makeServiceUpserts(db,services),
+    ...makeEvaluatorCatalogUpserts(db,evaluatorNames),
+
     db.prepare(`
       DELETE FROM monthly_actions
       WHERE event_id IN (
         SELECT id FROM events WHERE month = ?
       )
     `).bind(month),
-    ...makePlanInserts(db, filtered)
+
+    ...makePlanInserts(db,filteredPlans),
+
+    db.prepare(`
+      DELETE FROM event_assignments
+      WHERE event_id IN (
+        SELECT id FROM events WHERE month = ?
+      )
+    `).bind(month),
+
+    ...makeEvaluatorAssignmentInserts(
+      db,
+      filteredAssignments
+    )
   ];
 
   await db.batch(statements);
 
-  return filtered.length;
+  return {
+    plans:filteredPlans.length,
+    evaluatorAssignments:
+      filteredAssignments.filter(item => item.evaluator).length
+  };
+}
+
+function normalizeEvaluatorName(value) {
+  const name = String(value || "").trim();
+
+  if (!name || name.length > 120) {
+    throw new Error("Nom d’évaluateur invalide.");
+  }
+
+  return name;
+}
+
+function normalizeEvaluatorCatalog(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const unique = new Map();
+
+  values.forEach(value => {
+    const name = normalizeEvaluatorName(value);
+    const key = name.toLocaleLowerCase("fr");
+
+    if (!unique.has(key)) {
+      unique.set(key,name);
+    }
+  });
+
+  return [...unique.values()];
+}
+
+function normalizeEvaluatorAssignments(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const rows = [];
+
+  values.forEach(raw => {
+    const eventId = String(raw?.eventId || "").trim();
+
+    if(!eventId){
+      return;
+    }
+
+    const names = Array.isArray(raw?.evaluators)
+      ? raw.evaluators
+      : (raw?.evaluator ? [raw.evaluator] : []);
+
+    normalizeEvaluatorCatalog(names)
+      .forEach(evaluator => {
+        rows.push({
+          eventId,
+          evaluator
+        });
+      });
+  });
+
+  return rows;
+}
+
+function makeEvaluatorCatalogUpserts(db,evaluators) {
+  const statements = [];
+
+  for (const chunk of chunks(evaluators,30)) {
+    const values = chunk
+      .map(() => "(?,?,1,CURRENT_TIMESTAMP)")
+      .join(",");
+
+    const params = [];
+
+    chunk.forEach(name => {
+      params.push(
+        name,
+        evaluators.indexOf(name) + 1
+      );
+    });
+
+    statements.push(
+      db.prepare(`
+        INSERT INTO evaluator_catalog (
+          name, sort_order, active, updated_at
+        )
+        VALUES ${values}
+        ON CONFLICT(name) DO UPDATE SET
+          active = 1,
+          updated_at = CURRENT_TIMESTAMP
+      `).bind(...params)
+    );
+  }
+
+  return statements;
+}
+
+function makeEvaluatorAssignmentInserts(db,assignments) {
+  return assignments.map(item =>
+    db.prepare(`
+      INSERT INTO event_assignments (
+        event_id, evaluator, updated_at
+      )
+      VALUES (?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT(event_id,evaluator) DO UPDATE SET
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(
+      item.eventId,
+      item.evaluator
+    )
+  );
 }
 
 function normalizeMonthSettings(rawSettings) {
@@ -551,7 +743,13 @@ function makeMonthSettingUpserts(db,settings) {
   );
 }
 
-async function restoreAll(db, rawEvents, rawServices, rawMonthSettings) {
+async function restoreAll(
+  db,
+  rawEvents,
+  rawServices,
+  rawMonthSettings,
+  rawEvaluators
+) {
   if (!Array.isArray(rawEvents)) {
     throw new Error("Sauvegarde invalide.");
   }
@@ -562,7 +760,9 @@ async function restoreAll(db, rawEvents, rawServices, rawMonthSettings) {
 
   const events = rawEvents.map(normalizeEvent);
   const plans = [];
+  const assignments = [];
   const services = normalizeServiceCatalog(rawServices);
+  const monthSettings = normalizeMonthSettings(rawMonthSettings);
 
   rawEvents.forEach(raw => {
     const id = String(raw.id || "").trim();
@@ -577,26 +777,55 @@ async function restoreAll(db, rawEvents, rawServices, rawMonthSettings) {
         );
       });
     }
+
+    const eventEvaluators = Array.isArray(raw.evaluators)
+      ? raw.evaluators
+      : (raw.evaluator ? [raw.evaluator] : []);
+
+    normalizeEvaluatorCatalog(eventEvaluators)
+      .forEach(evaluator => {
+        assignments.push({
+          eventId:id,
+          evaluator
+        });
+      });
   });
+
+  const evaluatorCatalog = normalizeEvaluatorCatalog([
+    ...(Array.isArray(rawEvaluators) ? rawEvaluators : []),
+    ...assignments.map(item => item.evaluator)
+  ]);
 
   const statements = [
     db.prepare("DELETE FROM monthly_actions"),
+    db.prepare("DELETE FROM event_assignments"),
     db.prepare("DELETE FROM events"),
-    ...makeEventUpserts(db, events),
-    ...makePlanInserts(db, plans)
+    ...makeEventUpserts(db,events),
+    ...makePlanInserts(db,plans),
+    ...makeEvaluatorAssignmentInserts(db,assignments)
   ];
 
   if (services.length) {
     statements.push(
       db.prepare("DELETE FROM service_catalog"),
-      ...makeServiceUpserts(db, services)
+      ...makeServiceUpserts(db,services)
     );
   }
 
   if (monthSettings.length) {
     statements.push(
       db.prepare("DELETE FROM month_settings"),
-      ...makeMonthSettingUpserts(db, monthSettings)
+      ...makeMonthSettingUpserts(db,monthSettings)
+    );
+  }
+
+  if (evaluatorCatalog.length) {
+    statements.push(
+      db.prepare("DELETE FROM evaluator_catalog"),
+      ...makeEvaluatorCatalogUpserts(
+        db,
+        evaluatorCatalog
+      )
     );
   }
 
@@ -604,9 +833,8 @@ async function restoreAll(db, rawEvents, rawServices, rawMonthSettings) {
 
   return {
     events:events.length,
-    plans:plans.filter(r =>
-      r.plannedDate || r.completedDate || r.done
-    ).length
+    plans:plans.length,
+    evaluatorAssignments:assignments.length
   };
 }
 
@@ -654,12 +882,51 @@ export async function onRequestPost(context) {
         context.env.DB,
         payload.month,
         payload.plans,
-        payload.services
+        payload.services,
+        payload.evaluatorAssignments
       );
 
       return json({
         ok:true,
         saved,
+        serverTime:now,
+        storage:"cloudflare-d1"
+      });
+    }
+
+    if (action === "addEvaluator") {
+      const name = normalizeEvaluatorName(payload.name);
+
+      const orderResult = await context.env.DB.prepare(`
+        SELECT COALESCE(MAX(sort_order),0) + 1 AS nextOrder
+        FROM evaluator_catalog
+      `).first();
+
+      await context.env.DB.prepare(`
+        INSERT INTO evaluator_catalog (
+          name, sort_order, active, updated_at
+        )
+        VALUES (?,?,1,CURRENT_TIMESTAMP)
+        ON CONFLICT(name) DO UPDATE SET
+          active = 1,
+          updated_at = CURRENT_TIMESTAMP
+      `).bind(
+        name,
+        Number(orderResult?.nextOrder || 1)
+      ).run();
+
+      const result = await context.env.DB.prepare(`
+        SELECT name
+        FROM evaluator_catalog
+        WHERE active = 1
+        ORDER BY sort_order ASC, name COLLATE NOCASE ASC
+      `).all();
+
+      return json({
+        ok:true,
+        evaluators:(result.results || [])
+          .map(row => String(row.name))
+          .filter(Boolean),
         serverTime:now,
         storage:"cloudflare-d1"
       });
@@ -691,7 +958,9 @@ export async function onRequestPost(context) {
       const restored = await restoreAll(
         context.env.DB,
         payload.events,
-        payload.services
+        payload.services,
+        payload.monthSettings,
+        payload.evaluators
       );
 
       return json({

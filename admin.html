@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Administration — Certification HAS 2028 CHIMR</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <meta name="theme-color" content="#0b326d">
 </head>
 <body>
 
@@ -348,6 +353,26 @@
           Enregistrer le bandeau
         </button>
       </div>
+    </section>
+
+    <section id="evaluatorCatalogAdmin" class="evaluator-catalog-admin no-export" hidden>
+      <div class="evaluator-catalog-head">
+        <div>
+          <strong>Évaluateurs</strong>
+          <span>Cette liste alimente les menus « Évaluateur » des méthodes et actions du mois.</span>
+        </div>
+        <div class="evaluator-catalog-add">
+          <input
+            type="text"
+            id="newEvaluatorName"
+            maxlength="120"
+            placeholder="Nom du nouvel évaluateur">
+          <button type="button" id="btnAddEvaluator" class="btn ghost">
+            + Ajouter
+          </button>
+        </div>
+      </div>
+      <div id="evaluatorCatalogList" class="evaluator-catalog-list"></div>
     </section>
 
     <div id="monthlyPlanBody" class="monthly-plan-body"></div>

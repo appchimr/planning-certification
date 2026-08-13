@@ -1,6 +1,7 @@
 
 let events = [];
 let monthSettings = [];
+let evaluators = [];
 let currentMonthlyMonth = "";
 
 const monthlyDialog = document.getElementById("monthlyDialog");
@@ -26,6 +27,9 @@ async function refreshPublic(){
     monthSettings = Array.isArray(data.monthSettings)
       ? data.monthSettings
       : [];
+    evaluators = Array.isArray(data.evaluators)
+      ? data.evaluators
+      : [];
 
     renderPlanning(
       "planning",
@@ -46,7 +50,9 @@ async function refreshPublic(){
         "monthlyPlanBody",
         currentMonthlyMonth,
         events,
-        false
+        false,
+        [],
+        evaluators
       );
     }
   }catch(err){

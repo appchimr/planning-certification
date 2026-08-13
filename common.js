@@ -330,12 +330,122 @@ function buildServiceSelector(event,serviceCatalog){
   return panel;
 }
 
+function assignedEvaluatorsForEvent(event){
+  if(Array.isArray(event.evaluators)){
+    return event.evaluators
+      .map(name => String(name || "").trim())
+      .filter(Boolean);
+  }
+
+  // Compatibilité avec une sauvegarde V4.7 à un seul évaluateur.
+  if(event.evaluator){
+    return [String(event.evaluator).trim()].filter(Boolean);
+  }
+
+  return [];
+}
+
+function buildMonthlyEvaluator(event,editable=false,evaluatorCatalog=[]){
+  if(event.type === "TH"){
+    return null;
+  }
+
+  const assigned = assignedEvaluatorsForEvent(event);
+
+  const wrap = document.createElement("div");
+  wrap.className = editable
+    ? "monthly-evaluator-control no-export"
+    : "monthly-evaluator-readonly";
+
+  if(editable){
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "monthly-evaluator-toggle";
+    button.dataset.eventId = event.id;
+    button.textContent = assigned.length
+      ? `Évaluateurs (${assigned.length})`
+      : "Affecter les évaluateurs";
+
+    const panel = document.createElement("div");
+    panel.className = "evaluator-selector";
+    panel.dataset.eventId = event.id;
+    panel.hidden = true;
+
+    const title = document.createElement("div");
+    title.className = "evaluator-selector-title";
+    title.innerHTML =
+      `<strong>Évaluateurs de cette action</strong>` +
+      `<span>Vous pouvez sélectionner plusieurs personnes.</span>`;
+
+    const grid = document.createElement("div");
+    grid.className = "evaluator-selector-grid";
+
+    (evaluatorCatalog || []).forEach(name => {
+      const label = document.createElement("label");
+      label.className = "evaluator-choice";
+
+      const check = document.createElement("input");
+      check.type = "checkbox";
+      check.className = "evaluator-choice-check";
+      check.value = name;
+      check.checked = assigned.includes(name);
+
+      const text = document.createElement("span");
+      text.textContent = name;
+
+      label.append(check,text);
+      grid.appendChild(label);
+    });
+
+    if(!(evaluatorCatalog || []).length){
+      const empty = document.createElement("div");
+      empty.className = "evaluator-selector-empty";
+      empty.textContent =
+        "Ajoutez d’abord un évaluateur dans la liste générale.";
+      grid.appendChild(empty);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "evaluator-selector-actions";
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "btn ghost evaluator-selector-close";
+    close.textContent = "Fermer";
+
+    actions.appendChild(close);
+    panel.append(title,grid,actions);
+    wrap.append(button,panel);
+
+  }else if(assigned.length){
+    const label = document.createElement("span");
+    label.textContent =
+      assigned.length > 1 ? "Évaluateurs" : "Évaluateur";
+
+    const names = document.createElement("div");
+    names.className = "monthly-evaluator-names";
+
+    assigned.forEach(name => {
+      const chip = document.createElement("strong");
+      chip.textContent = name;
+      names.appendChild(chip);
+    });
+
+    wrap.append(label,names);
+  }else{
+    wrap.hidden = true;
+  }
+
+  return wrap;
+}
+
 function renderMonthlyPlanBody(
   targetId,
   month,
   events,
   editable=false,
-  serviceCatalog=[]
+  serviceCatalog=[],
+  evaluatorCatalog=[]
 ){
   const root = document.getElementById(targetId);
   if(!root) return;
@@ -373,6 +483,19 @@ function renderMonthlyPlanBody(
     if(isTheme){
       head.append(title);
     }else{
+      const side = document.createElement("div");
+      side.className = "monthly-event-side";
+
+      const evaluator = buildMonthlyEvaluator(
+        event,
+        editable,
+        evaluatorCatalog
+      );
+
+      if(evaluator){
+        side.appendChild(evaluator);
+      }
+
       const summary = document.createElement("div");
       summary.className = "monthly-event-summary";
 
@@ -385,7 +508,8 @@ function renderMonthlyPlanBody(
           `<span>Non décliné par service</span>`;
       }
 
-      head.append(title,summary);
+      side.appendChild(summary);
+      head.append(title,side);
     }
 
     const content = document.createElement("div");
