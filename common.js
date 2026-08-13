@@ -798,7 +798,9 @@ function makeMonthTitle(month, handlers={}){
   const title = document.createElement("button");
   title.type = "button";
   title.className = "month-title month-title-clickable";
-  title.textContent = month;
+  title.innerHTML =
+    `<span class="month-title-label">${escapeHtml(month)}</span>` +
+    `<span class="month-title-action">Suivi mensuel <b>›</b></span>`;
   title.title = "Ouvrir la planification mensuelle";
   title.addEventListener("click", () => handlers.month?.(month));
   return title;

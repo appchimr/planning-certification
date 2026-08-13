@@ -2242,3 +2242,82 @@ dialog::backdrop{
 .service-evaluator-mode.inherit{
   display:none!important;
 }
+
+
+/* V4.9.2 — rendre le mois clairement cliquable */
+.month-title-clickable{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding-left:12px;
+  padding-right:10px;
+  cursor:pointer;
+}
+
+.month-title-label{
+  flex:1 1 auto;
+  text-align:center;
+  font-weight:850;
+}
+
+.month-title-action{
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:3px 7px;
+  border-radius:999px;
+  background:rgba(255,255,255,.68);
+  border:1px solid rgba(66,104,151,.20);
+  color:#315d91;
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.05px;
+  white-space:nowrap;
+  transition:
+    background .12s ease,
+    border-color .12s ease,
+    color .12s ease,
+    transform .12s ease;
+}
+
+.month-title-action b{
+  font-size:13px;
+  line-height:1;
+}
+
+.month-title-clickable:hover{
+  background:#dceafb;
+  border-color:#6f95c3;
+  box-shadow:0 2px 7px rgba(11,47,107,.12);
+}
+
+.month-title-clickable:hover .month-title-action{
+  background:#ffffff;
+  border-color:#8eacd0;
+  color:#123f7a;
+  transform:translateX(1px);
+}
+
+.month-title-clickable:focus-visible{
+  outline:2px solid #4f7fb8;
+  outline-offset:2px;
+}
+
+@media(max-width:700px){
+  .month-title-clickable{
+    padding-left:8px;
+    padding-right:7px;
+    gap:6px;
+  }
+
+  .month-title-label{
+    text-align:left;
+  }
+
+  .month-title-action{
+    font-size:8.5px;
+    padding:3px 6px;
+  }
+}
