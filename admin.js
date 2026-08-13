@@ -1,5 +1,5 @@
 
-const LOCAL_BACKUP_KEY = "chimr_has_2028_admin_backup_v3";
+const LOCAL_BACKUP_KEY = "chimr_has_2028_admin_backup_d1_v1";
 
 let state = {events:[]};
 let unlocked = false;
@@ -190,7 +190,7 @@ adminKeyInput.addEventListener("keydown",e => {
 async function loadAdmin(){
   try{
     setConnectionStatus(
-      "Chargement de la sauvegarde centrale…",
+      "Chargement de Cloudflare D1…",
       "warn"
     );
 
@@ -201,7 +201,7 @@ async function loadAdmin(){
     render();
 
     setConnectionStatus(
-      "Synchronisé avec Google Sheets",
+      "Synchronisé avec Cloudflare D1",
       "ok"
     );
 
@@ -259,7 +259,7 @@ async function saveCentral(){
     });
 
     setConnectionStatus(
-      "Synchronisé avec Google Sheets",
+      "Synchronisé avec Cloudflare D1",
       "ok"
     );
 
@@ -276,7 +276,7 @@ async function saveCentral(){
     console.error(err);
 
     setConnectionStatus(
-      "Sauvegarde centrale impossible — copie locale conservée",
+      "Sauvegarde D1 impossible — copie locale conservée",
       "bad"
     );
 
@@ -446,7 +446,7 @@ document.getElementById("fileImport")
       await saveCentral();
 
       toast(
-        "Sauvegarde importée et enregistrée dans la base centrale"
+        "Sauvegarde importée et enregistrée dans Cloudflare D1"
       );
 
     }catch(err){
