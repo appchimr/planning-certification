@@ -1,5 +1,6 @@
 
 let events = [];
+let monthSettings = [];
 let currentMonthlyMonth = "";
 
 const monthlyDialog = document.getElementById("monthlyDialog");
@@ -22,7 +23,17 @@ async function refreshPublic(){
   try{
     const data = await loadRemoteEvents();
     events = data.events;
-    renderPlanning("planning",events,false,publicHandlers());
+    monthSettings = Array.isArray(data.monthSettings)
+      ? data.monthSettings
+      : [];
+
+    renderPlanning(
+      "planning",
+      events,
+      false,
+      publicHandlers(),
+      monthSettings
+    );
 
     const d = new Date(data.serverTime);
     const el = document.getElementById("lastUpdate");

@@ -1604,3 +1604,126 @@ dialog::backdrop{
 .monthly-theme-content{
   display:none;
 }
+
+
+/* V4.6 — pilotage du bandeau Mise à niveau */
+.month-upgrade-admin{
+  flex:0 0 auto;
+  margin:10px 14px 0;
+  border:1px solid #f2a24a;
+  background:#fff8f0;
+  border-radius:9px;
+  padding:10px 12px;
+}
+
+.month-upgrade-admin-hidden-state{
+  border-color:#b9d8c3;
+  background:#f2faf4;
+}
+
+.month-upgrade-admin-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:16px;
+}
+
+.month-upgrade-admin-head > div{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+
+.month-upgrade-admin-head strong{
+  color:#b75508;
+  font-size:12px;
+}
+
+.month-upgrade-admin-hidden-state .month-upgrade-admin-head strong{
+  color:#24733f;
+}
+
+.month-upgrade-admin-head span{
+  color:#68788d;
+  font-size:10.5px;
+  line-height:1.35;
+}
+
+.month-upgrade-switch{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  white-space:nowrap;
+  color:#294b72;
+  font-size:10.5px;
+  font-weight:800;
+}
+
+.month-upgrade-switch input{
+  width:17px;
+  height:17px;
+  accent-color:#df6c09;
+}
+
+.month-upgrade-fields{
+  display:grid;
+  grid-template-columns:1fr 1.4fr;
+  gap:9px;
+  margin-top:9px;
+}
+
+.month-upgrade-fields label{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.month-upgrade-fields label span{
+  color:#526b88;
+  font-size:9.5px;
+  font-weight:800;
+  text-transform:uppercase;
+}
+
+.month-upgrade-fields input{
+  width:100%;
+  box-sizing:border-box;
+  border:1px solid #c7d3e0;
+  border-radius:6px;
+  background:#fff;
+  padding:6px 8px;
+  color:#243d60;
+  font-size:11px;
+}
+
+.month-upgrade-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:9px;
+}
+
+.upgrade-done-btn{
+  border-color:#8dc6a0;
+  background:#edf8f1;
+  color:#24733f;
+  font-weight:850;
+}
+
+.upgrade-done-btn:hover{
+  background:#e0f3e6;
+}
+
+@media(max-width:720px){
+  .month-upgrade-admin-head{
+    flex-direction:column;
+  }
+
+  .month-upgrade-fields{
+    grid-template-columns:1fr;
+  }
+
+  .month-upgrade-actions{
+    flex-direction:column;
+  }
+}

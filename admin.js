@@ -1,7 +1,7 @@
 
 const LOCAL_BACKUP_KEY = "chimr_has_2028_admin_backup_d1_v4";
 
-let state = {events:[],services:[]};
+let state = {events:[],services:[],monthSettings:[]};
 let unlocked = false;
 let currentMonthlyMonth = "";
 
@@ -63,6 +63,103 @@ eventDone.addEventListener("change",() => {
   }
 });
 
+function getMonthSetting(month){
+  return state.monthSettings.find(setting => setting.month === month) || null;
+}
+
+function upsertMonthSetting(setting){
+  const index =
+    state.monthSettings.findIndex(item => item.month === setting.month);
+
+  if(index >= 0){
+    state.monthSettings[index] = {
+      ...state.monthSettings[index],
+      ...setting
+    };
+  }else{
+    state.monthSettings.push(setting);
+  }
+}
+
+function renderMonthUpgradeAdmin(month){
+  const panel = document.getElementById("monthUpgradeAdmin");
+  if(!panel) return;
+
+  const setting = getMonthSetting(month);
+
+  if(!setting || !unlocked){
+    panel.hidden = true;
+    return;
+  }
+
+  panel.hidden = false;
+
+  document.getElementById("monthUpgradeVisible").checked =
+    !!setting.upgradeVisible;
+
+  document.getElementById("monthUpgradeTitle").value =
+    setting.upgradeTitle || "MISE À NIVEAU";
+
+  document.getElementById("monthUpgradeSubtitle").value =
+    setting.upgradeSubtitle || "Référentiel HAS 2028";
+
+  panel.classList.toggle(
+    "month-upgrade-admin-hidden-state",
+    !setting.upgradeVisible
+  );
+}
+
+async function saveUpgradeSetting(forceVisible=null){
+  if(!ensureUnlocked()) return;
+
+  const setting = getMonthSetting(currentMonthlyMonth);
+
+  if(!setting){
+    toast("Aucun bandeau configurable pour ce mois.");
+    return;
+  }
+
+  const adminKey = sessionStorage.getItem("HAS_ADMIN_KEY");
+
+  const upgradeVisible =
+    forceVisible === null
+      ? document.getElementById("monthUpgradeVisible").checked
+      : Boolean(forceVisible);
+
+  const upgradeTitle =
+    document.getElementById("monthUpgradeTitle").value.trim() ||
+    "MISE À NIVEAU";
+
+  const upgradeSubtitle =
+    document.getElementById("monthUpgradeSubtitle").value.trim() ||
+    "Référentiel HAS 2028";
+
+  try{
+    const data = await postApi({
+      action:"saveMonthSetting",
+      adminKey,
+      month:currentMonthlyMonth,
+      upgradeVisible,
+      upgradeTitle,
+      upgradeSubtitle
+    });
+
+    upsertMonthSetting(data.monthSetting);
+    localBackup();
+    render();
+    renderMonthUpgradeAdmin(currentMonthlyMonth);
+
+    toast(
+      upgradeVisible
+        ? "Bandeau de mise à niveau enregistré."
+        : "Bandeau de mise à niveau masqué."
+    );
+  }catch(err){
+    console.error(err);
+    toast(err?.message || "Impossible d'enregistrer le bandeau.");
+  }
+}
+
 function handlers(){
   return {
     add: month => {
@@ -114,7 +211,7 @@ function handlers(){
 }
 
 function render(){
-  renderPlanning("planning",state.events,true,handlers());
+  renderPlanning("planning",state.events,true,handlers(),state.monthSettings);
 }
 
 function idNow(){
@@ -169,6 +266,7 @@ function setUnlocked(value){
       state.services
     );
     btnSaveMonthly.hidden = !value;
+    renderMonthUpgradeAdmin(currentMonthlyMonth);
   }
 }
 
@@ -219,7 +317,10 @@ async function loadAdmin(){
 
     state = {
       events:data.events,
-      services:Array.isArray(data.services) ? data.services : []
+      services:Array.isArray(data.services) ? data.services : [],
+      monthSettings:Array.isArray(data.monthSettings)
+        ? data.monthSettings
+        : []
     };
     localBackup();
     render();
@@ -384,6 +485,7 @@ function openMonthlyAdmin(month){
 
   btnSaveMonthly.hidden = !unlocked;
   monthlyDialog.showModal();
+  renderMonthUpgradeAdmin(month);
 }
 
 function collectMonthlyPlans(){
@@ -917,14 +1019,20 @@ document.getElementById("fileImport")
         action:"restoreAll",
         adminKey:key,
         events:parsed.events,
-        services:Array.isArray(parsed.services) ? parsed.services : state.services
+        services:Array.isArray(parsed.services) ? parsed.services : state.services,
+        monthSettings:Array.isArray(parsed.monthSettings)
+          ? parsed.monthSettings
+          : state.monthSettings
       });
 
       state = {
         events:parsed.events,
         services:Array.isArray(parsed.services)
           ? parsed.services
-          : state.services
+          : state.services,
+        monthSettings:Array.isArray(parsed.monthSettings)
+          ? parsed.monthSettings
+          : state.monthSettings
       };
       localBackup();
       render();
@@ -950,6 +1058,32 @@ document.getElementById("fileImport")
     }
 
     e.target.value = "";
+  });
+
+document.getElementById("btnSaveUpgrade")
+  ?.addEventListener("click",() => saveUpgradeSetting(null));
+
+document.getElementById("btnUpgradeDone")
+  ?.addEventListener("click",async () => {
+    if(!ensureUnlocked()) return;
+
+    if(!confirm(
+      "Masquer le bandeau « Mise à niveau » pour ce mois ? Vous pourrez le réafficher plus tard."
+    )){
+      return;
+    }
+
+    document.getElementById("monthUpgradeVisible").checked = false;
+    await saveUpgradeSetting(false);
+  });
+
+document.getElementById("monthUpgradeVisible")
+  ?.addEventListener("change",event => {
+    document.getElementById("monthUpgradeAdmin")
+      ?.classList.toggle(
+        "month-upgrade-admin-hidden-state",
+        !event.target.checked
+      );
   });
 
 fillMonths();

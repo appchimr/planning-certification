@@ -292,33 +292,44 @@ function makeDeleteByIds(db, table, column, ids) {
 }
 
 async function readAll(db) {
-  const [eventResult,planResult,serviceResult] = await db.batch([
-    db.prepare(`
-      SELECT
-        id, month, type, label, done,
-        planned_date AS plannedDate,
-        completed_date AS completedDate,
-        updated_at AS updatedAt
-      FROM events
-      ORDER BY sort_order ASC, label COLLATE NOCASE ASC
-    `),
-    db.prepare(`
-      SELECT
-        event_id AS eventId,
-        service,
-        planned_date AS plannedDate,
-        completed_date AS completedDate,
-        done
-      FROM monthly_actions
-      ORDER BY event_id ASC, service ASC
-    `),
-    db.prepare(`
-      SELECT name
-      FROM service_catalog
-      WHERE active = 1
-      ORDER BY sort_order ASC, name COLLATE NOCASE ASC
-    `)
-  ]);
+  const [eventResult,planResult,serviceResult,monthSettingResult] =
+    await db.batch([
+      db.prepare(`
+        SELECT
+          id, month, type, label, done,
+          planned_date AS plannedDate,
+          completed_date AS completedDate,
+          updated_at AS updatedAt
+        FROM events
+        ORDER BY sort_order ASC, label COLLATE NOCASE ASC
+      `),
+      db.prepare(`
+        SELECT
+          event_id AS eventId,
+          service,
+          planned_date AS plannedDate,
+          completed_date AS completedDate,
+          done
+        FROM monthly_actions
+        ORDER BY event_id ASC, service ASC
+      `),
+      db.prepare(`
+        SELECT name
+        FROM service_catalog
+        WHERE active = 1
+        ORDER BY sort_order ASC, name COLLATE NOCASE ASC
+      `),
+      db.prepare(`
+        SELECT
+          month,
+          upgrade_visible AS upgradeVisible,
+          upgrade_title AS upgradeTitle,
+          upgrade_subtitle AS upgradeSubtitle,
+          updated_at AS updatedAt
+        FROM month_settings
+        ORDER BY month ASC
+      `)
+    ]);
 
   const planMap = new Map();
 
@@ -351,7 +362,16 @@ async function readAll(db) {
     .map(row => String(row.name))
     .filter(Boolean);
 
-  return {events,services};
+  const monthSettings = (monthSettingResult.results || [])
+    .map(row => ({
+      month:String(row.month),
+      upgradeVisible:Number(row.upgradeVisible) === 1,
+      upgradeTitle:row.upgradeTitle || "MISE À NIVEAU",
+      upgradeSubtitle:row.upgradeSubtitle || "Référentiel HAS 2028",
+      updatedAt:row.updatedAt || ""
+    }));
+
+  return {events,services,monthSettings};
 }
 
 export async function onRequestGet(context) {
@@ -362,9 +382,10 @@ export async function onRequestGet(context) {
       ok:true,
       events:data.events,
       services:data.services,
+      monthSettings:data.monthSettings,
       serverTime: new Date().toISOString(),
       storage: "cloudflare-d1",
-      schemaVersion: 2.4
+      schemaVersion: 2.5
     });
 
   } catch (err) {
@@ -443,6 +464,7 @@ async function saveMonthPlan(db, month, rawPlans, rawServices) {
 
   const plans = rawPlans.map(normalizePlanRow);
   const services = normalizeServiceCatalog(rawServices);
+  const monthSettings = normalizeMonthSettings(rawMonthSettings);
 
   const eventResult = await db
     .prepare("SELECT id FROM events WHERE month = ?")
@@ -471,7 +493,65 @@ async function saveMonthPlan(db, month, rawPlans, rawServices) {
   return filtered.length;
 }
 
-async function restoreAll(db, rawEvents, rawServices) {
+function normalizeMonthSettings(rawSettings) {
+  if (!Array.isArray(rawSettings)) {
+    return [];
+  }
+
+  return rawSettings.map(raw => {
+    const month = String(raw?.month || "").trim();
+    const upgradeTitle =
+      String(raw?.upgradeTitle || "MISE À NIVEAU").trim();
+    const upgradeSubtitle =
+      String(raw?.upgradeSubtitle || "Référentiel HAS 2028").trim();
+
+    if (!month || month.length > 40) {
+      throw new Error("Mois de réglage invalide.");
+    }
+
+    if (!upgradeTitle || upgradeTitle.length > 120) {
+      throw new Error("Titre du bandeau invalide.");
+    }
+
+    if (!upgradeSubtitle || upgradeSubtitle.length > 180) {
+      throw new Error("Sous-titre du bandeau invalide.");
+    }
+
+    return {
+      month,
+      upgradeVisible:Boolean(raw.upgradeVisible),
+      upgradeTitle,
+      upgradeSubtitle
+    };
+  });
+}
+
+function makeMonthSettingUpserts(db,settings) {
+  return settings.map(setting =>
+    db.prepare(`
+      INSERT INTO month_settings (
+        month,
+        upgrade_visible,
+        upgrade_title,
+        upgrade_subtitle,
+        updated_at
+      )
+      VALUES (?,?,?,?,CURRENT_TIMESTAMP)
+      ON CONFLICT(month) DO UPDATE SET
+        upgrade_visible = excluded.upgrade_visible,
+        upgrade_title = excluded.upgrade_title,
+        upgrade_subtitle = excluded.upgrade_subtitle,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(
+      setting.month,
+      setting.upgradeVisible ? 1 : 0,
+      setting.upgradeTitle,
+      setting.upgradeSubtitle
+    )
+  );
+}
+
+async function restoreAll(db, rawEvents, rawServices, rawMonthSettings) {
   if (!Array.isArray(rawEvents)) {
     throw new Error("Sauvegarde invalide.");
   }
@@ -513,6 +593,13 @@ async function restoreAll(db, rawEvents, rawServices) {
     );
   }
 
+  if (monthSettings.length) {
+    statements.push(
+      db.prepare("DELETE FROM month_settings"),
+      ...makeMonthSettingUpserts(db, monthSettings)
+    );
+  }
+
   await db.batch(statements);
 
   return {
@@ -550,7 +637,8 @@ export async function onRequestPost(context) {
       const saved = await saveAllEvents(
         context.env.DB,
         payload.events,
-        payload.services
+        payload.services,
+        payload.monthSettings
       );
 
       return json({
@@ -572,6 +660,28 @@ export async function onRequestPost(context) {
       return json({
         ok:true,
         saved,
+        serverTime:now,
+        storage:"cloudflare-d1"
+      });
+    }
+
+    if (action === "saveMonthSetting") {
+      const settings = normalizeMonthSettings([{
+        month:payload.month,
+        upgradeVisible:payload.upgradeVisible,
+        upgradeTitle:payload.upgradeTitle,
+        upgradeSubtitle:payload.upgradeSubtitle
+      }]);
+
+      const setting = settings[0];
+
+      await context.env.DB.batch(
+        makeMonthSettingUpserts(context.env.DB,[setting])
+      );
+
+      return json({
+        ok:true,
+        monthSetting:setting,
         serverTime:now,
         storage:"cloudflare-d1"
       });

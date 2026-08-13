@@ -530,7 +530,35 @@ function makeMonthTitle(month, handlers={}){
   return title;
 }
 
-function buildMonthCard(month, events, editable=false, handlers={}){
+function monthSettingFor(month,monthSettings){
+  if(!monthSettings) return null;
+
+  if(Array.isArray(monthSettings)){
+    return monthSettings.find(setting => setting.month === month) || null;
+  }
+
+  return monthSettings[month] || null;
+}
+
+function upgradeSettingFor(month,monthSettings){
+  const setting = monthSettingFor(month,monthSettings);
+
+  if(!setting){
+    return {
+      visible:false,
+      title:"MISE À NIVEAU",
+      subtitle:"Référentiel HAS 2028"
+    };
+  }
+
+  return {
+    visible:!!setting.upgradeVisible,
+    title:setting.upgradeTitle || "MISE À NIVEAU",
+    subtitle:setting.upgradeSubtitle || "Référentiel HAS 2028"
+  };
+}
+
+function buildMonthCard(month, events, editable=false, handlers={}, monthSettings=[]){
   const card = document.createElement("div");
   card.className = `month-card ${phaseForMonth(month)}`.trim();
 
@@ -550,12 +578,15 @@ function buildMonthCard(month, events, editable=false, handlers={}){
     list.appendChild(note);
   }
 
-  if(["OCTOBRE 2027","NOVEMBRE 2027","DÉCEMBRE 2027"].includes(month)){
+  const upgrade = upgradeSettingFor(month,monthSettings);
+
+  if(upgrade.visible){
     const up = document.createElement("div");
     up.className = "upgrade";
     up.innerHTML =
       '<div class="icon">⟳</div>' +
-      '<div><b>MISE À NIVEAU</b><span>Référentiel HAS 2028</span></div>';
+      `<div><b>${escapeHtml(upgrade.title)}</b>` +
+      `<span>${escapeHtml(upgrade.subtitle)}</span></div>`;
     list.appendChild(up);
   }
 
@@ -573,7 +604,7 @@ function buildMonthCard(month, events, editable=false, handlers={}){
   return card;
 }
 
-function buildSection(title, months, events, editable=false, handlers={}){
+function buildSection(title, months, events, editable=false, handlers={}, monthSettings=[]){
   const section = document.createElement("section");
   section.className = "section";
 
@@ -585,14 +616,14 @@ function buildSection(title, months, events, editable=false, handlers={}){
   grid.className = "month-grid";
 
   months.forEach(m =>
-    grid.appendChild(buildMonthCard(m,events,editable,handlers))
+    grid.appendChild(buildMonthCard(m,events,editable,handlers,monthSettings))
   );
 
   section.append(h,grid);
   return section;
 }
 
-function buildFinalSection(events, editable=false, handlers={}){
+function buildFinalSection(events, editable=false, handlers={}, monthSettings=[]){
   const section = document.createElement("section");
   section.className = "section";
 
@@ -649,7 +680,7 @@ function buildFinalSection(events, editable=false, handlers={}){
   return section;
 }
 
-function renderPlanning(targetId, events, editable=false, handlers={}){
+function renderPlanning(targetId, events, editable=false, handlers={}, monthSettings=[]){
   const el = document.getElementById(targetId);
   if(!el) return;
 
@@ -660,7 +691,8 @@ function renderPlanning(targetId, events, editable=false, handlers={}){
     MONTHS.slice(0,12),
     events,
     editable,
-    handlers
+    handlers,
+    monthSettings
   ));
 
   el.appendChild(buildSection(
@@ -668,10 +700,11 @@ function renderPlanning(targetId, events, editable=false, handlers={}){
     MONTHS.slice(12,16),
     events,
     editable,
-    handlers
+    handlers,
+    monthSettings
   ));
 
-  el.appendChild(buildFinalSection(events,editable,handlers));
+  el.appendChild(buildFinalSection(events,editable,handlers,monthSettings));
 
   renderStats(events);
   renderNext(events);

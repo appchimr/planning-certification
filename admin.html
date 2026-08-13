@@ -317,6 +317,39 @@
       Pour chaque événement, utilisez « Décliner par service » puis cochez uniquement les services concernés. La liste des services peut être enrichie au fur et à mesure. Cocher « Réalisé » renseigne automatiquement la date du jour si aucune date de réalisation n’est saisie.
     </div>
 
+    <section id="monthUpgradeAdmin" class="month-upgrade-admin no-export" hidden>
+      <div class="month-upgrade-admin-head">
+        <div>
+          <strong>Mise à niveau du référentiel</strong>
+          <span>Ce bandeau reste visible sur la programmation globale tant que les données sont en attente de mise à niveau.</span>
+        </div>
+        <label class="month-upgrade-switch">
+          <input type="checkbox" id="monthUpgradeVisible">
+          <span>Afficher le bandeau</span>
+        </label>
+      </div>
+
+      <div class="month-upgrade-fields">
+        <label>
+          <span>Titre</span>
+          <input type="text" id="monthUpgradeTitle" maxlength="120" value="MISE À NIVEAU">
+        </label>
+        <label>
+          <span>Sous-titre</span>
+          <input type="text" id="monthUpgradeSubtitle" maxlength="180" value="Référentiel HAS 2028">
+        </label>
+      </div>
+
+      <div class="month-upgrade-actions">
+        <button type="button" id="btnUpgradeDone" class="btn upgrade-done-btn">
+          Mise à niveau terminée
+        </button>
+        <button type="button" id="btnSaveUpgrade" class="btn ghost">
+          Enregistrer le bandeau
+        </button>
+      </div>
+    </section>
+
     <div id="monthlyPlanBody" class="monthly-plan-body"></div>
 
     <div class="dialog-actions monthly-dialog-actions">
