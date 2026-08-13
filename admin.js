@@ -1,7 +1,7 @@
 
 const LOCAL_BACKUP_KEY = "chimr_has_2028_admin_backup_d1_v4";
 
-let state = {events:[]};
+let state = {events:[],services:[]};
 let unlocked = false;
 let currentMonthlyMonth = "";
 
@@ -165,7 +165,8 @@ function setUnlocked(value){
       "monthlyPlanBody",
       currentMonthlyMonth,
       state.events,
-      value
+      value,
+      state.services
     );
     btnSaveMonthly.hidden = !value;
   }
@@ -216,7 +217,10 @@ async function loadAdmin(){
 
     const data = await loadRemoteEvents();
 
-    state = {events:data.events};
+    state = {
+      events:data.events,
+      services:Array.isArray(data.services) ? data.services : []
+    };
     localBackup();
     render();
 
@@ -374,7 +378,8 @@ function openMonthlyAdmin(month){
     "monthlyPlanBody",
     month,
     state.events,
-    unlocked
+    unlocked,
+    state.services
   );
 
   btnSaveMonthly.hidden = !unlocked;
@@ -384,23 +389,31 @@ function openMonthlyAdmin(month){
 function collectMonthlyPlans(){
   return [...monthlyBody.querySelectorAll("tbody tr[data-event-id]")]
     .map(tr => {
+      const service =
+        String(tr.dataset.service || "").trim();
+
       const plannedDate =
         tr.querySelector(".monthly-planned")?.value || "";
+
       const completedDate =
         tr.querySelector(".monthly-completed")?.value || "";
+
       let done =
         !!tr.querySelector(".monthly-done")?.checked;
 
-      if(completedDate) done = true;
+      if(completedDate){
+        done = true;
+      }
 
       return {
         eventId:tr.dataset.eventId,
-        service:tr.dataset.service,
+        service,
         plannedDate,
         completedDate,
         done
       };
-    });
+    })
+    .filter(row => row.service);
 }
 
 function applyPlansToState(month, plans){
@@ -411,7 +424,7 @@ function applyPlansToState(month, plans){
       byEvent.set(row.eventId, []);
     }
 
-    if(row.plannedDate || row.completedDate || row.done){
+    if(row.service){
       byEvent.get(row.eventId).push({
         service:row.service,
         plannedDate:row.plannedDate,
@@ -434,6 +447,19 @@ async function saveMonthlyPlan(){
   const key = sessionStorage.getItem("HAS_ADMIN_KEY");
   const plans = collectMonthlyPlans();
 
+  const seen = new Set();
+  for(const row of plans){
+    const duplicateKey =
+      `${row.eventId}::${row.service.trim().toLocaleLowerCase("fr")}`;
+
+    if(seen.has(duplicateKey)){
+      toast(`Le service « ${row.service} » est présent deux fois pour le même événement.`);
+      return;
+    }
+
+    seen.add(duplicateKey);
+  }
+
   try{
     setConnectionStatus(
       "Enregistrement de la planification mensuelle…",
@@ -444,7 +470,8 @@ async function saveMonthlyPlan(){
       action:"saveMonthPlan",
       adminKey:key,
       month:currentMonthlyMonth,
-      plans
+      plans,
+      services:state.services
     });
 
     applyPlansToState(currentMonthlyMonth, plans);
@@ -478,6 +505,165 @@ async function saveMonthlyPlan(){
   }
 }
 
+monthlyBody.addEventListener("click",e => {
+  const decline = e.target.closest(".monthly-decline-services");
+
+  if(decline){
+    if(!ensureUnlocked()) return;
+
+    const block = decline.closest(".monthly-event");
+    const panel = block?.querySelector(".service-selector");
+
+    if(panel){
+      panel.hidden = !panel.hidden;
+    }
+    return;
+  }
+
+  const cancel = e.target.closest(".service-selector-cancel");
+
+  if(cancel){
+    const panel = cancel.closest(".service-selector");
+    if(panel) panel.hidden = true;
+    return;
+  }
+
+  const add = e.target.closest(".service-catalog-add");
+
+  if(add){
+    if(!ensureUnlocked()) return;
+
+    const panel = add.closest(".service-selector");
+    const input = panel?.querySelector(".service-catalog-new");
+    const name = String(input?.value || "").trim();
+
+    if(!name){
+      toast("Saisissez le nom du service.");
+      input?.focus();
+      return;
+    }
+
+    const exists = state.services.some(
+      s => s.toLocaleLowerCase("fr") === name.toLocaleLowerCase("fr")
+    );
+
+    if(exists){
+      toast("Ce service existe déjà dans la liste.");
+      input?.select();
+      return;
+    }
+
+    // Preserve dates currently typed before re-render
+    applyPlansToState(
+      currentMonthlyMonth,
+      collectMonthlyPlans()
+    );
+
+    state.services.push(name);
+
+    const event = state.events.find(
+      ev => ev.id === add.dataset.eventId
+    );
+
+    if(event){
+      const current = servicePlanForEvent(event);
+
+      current.push({
+        service:name,
+        plannedDate:"",
+        completedDate:"",
+        done:false
+      });
+
+      event.servicePlan = current;
+    }
+
+    renderMonthlyPlanBody(
+      "monthlyPlanBody",
+      currentMonthlyMonth,
+      state.events,
+      true,
+      state.services
+    );
+
+    const newPanel = monthlyBody.querySelector(
+      `.service-selector[data-event-id="${CSS.escape(add.dataset.eventId)}"]`
+    );
+
+    if(newPanel){
+      newPanel.hidden = false;
+    }
+
+    toast(`Service « ${name} » ajouté à la liste.`);
+    return;
+  }
+
+  const apply = e.target.closest(".service-selector-apply");
+
+  if(apply){
+    if(!ensureUnlocked()) return;
+
+    // Preserve all dates typed before applying new service selection
+    applyPlansToState(
+      currentMonthlyMonth,
+      collectMonthlyPlans()
+    );
+
+    const event = state.events.find(
+      ev => ev.id === apply.dataset.eventId
+    );
+
+    const panel = apply.closest(".service-selector");
+
+    if(!event || !panel) return;
+
+    const selected = [
+      ...panel.querySelectorAll(".service-choice-check:checked")
+    ].map(input => input.value);
+
+    const previous = servicePlanForEvent(event);
+    const previousMap = new Map(
+      previous.map(row => [row.service,row])
+    );
+
+    const removedWithData = previous.filter(row =>
+      !selected.includes(row.service) &&
+      (row.plannedDate || row.completedDate || row.done)
+    );
+
+    if(
+      removedWithData.length &&
+      !confirm(
+        "Certains services décochés contiennent déjà des dates ou un statut réalisé. Leur planification sera supprimée. Continuer ?"
+      )
+    ){
+      return;
+    }
+
+    event.servicePlan = selected.map(service => {
+      const old = previousMap.get(service);
+
+      return old || {
+        service,
+        plannedDate:"",
+        completedDate:"",
+        done:false
+      };
+    });
+
+    renderMonthlyPlanBody(
+      "monthlyPlanBody",
+      currentMonthlyMonth,
+      state.events,
+      true,
+      state.services
+    );
+
+    toast("Sélection des services appliquée.");
+    return;
+  }
+});
+
 monthlyBody.addEventListener("change",e => {
   const tr = e.target.closest("tr[data-event-id]");
   if(!tr) return;
@@ -501,7 +687,10 @@ monthlyBody.addEventListener("change",e => {
     }
   }
 
-  tr.classList.toggle("monthly-row-done", done.checked);
+  tr.classList.toggle(
+    "monthly-row-done",
+    !!done?.checked
+  );
 });
 
 btnSaveMonthly.addEventListener("click",saveMonthlyPlan);
@@ -612,10 +801,16 @@ document.getElementById("fileImport")
       const data = await postApi({
         action:"restoreAll",
         adminKey:key,
-        events:parsed.events
+        events:parsed.events,
+        services:Array.isArray(parsed.services) ? parsed.services : state.services
       });
 
-      state = {events:parsed.events};
+      state = {
+        events:parsed.events,
+        services:Array.isArray(parsed.services)
+          ? parsed.services
+          : state.services
+      };
       localBackup();
       render();
 

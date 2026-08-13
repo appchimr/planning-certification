@@ -14,17 +14,6 @@ const TYPE_LABELS = {
 
 const DATED_TYPES = new Set(["JT","PT","PR","TC","AS","EV","EP"]);
 
-const SERVICES = [
-  "Urgences",
-  "Médecine",
-  "SMR",
-  "HAD",
-  "Médecine addictologie",
-  "SMR addictologie",
-  "USLD",
-  "Psychiatrie"
-];
-
 const MONTHS = [
   "SEPTEMBRE 2026","OCTOBRE 2026","NOVEMBRE 2026","DÉCEMBRE 2026",
   "JANVIER 2027","FÉVRIER 2027","MARS 2027","AVRIL 2027",
@@ -173,33 +162,166 @@ function eventDateText(e){
 }
 
 function servicePlanForEvent(event){
-  const saved = Array.isArray(event.servicePlan) ? event.servicePlan : [];
-  const map = new Map(saved.map(r => [r.service, r]));
-
-  return SERVICES.map(service => {
-    const row = map.get(service) || {};
-    return {
-      service,
-      plannedDate: row.plannedDate || "",
-      completedDate: row.completedDate || "",
-      done: !!row.done
-    };
-  });
+  return Array.isArray(event.servicePlan)
+    ? event.servicePlan
+        .map(row => ({
+          service:String(row.service || "").trim(),
+          plannedDate:row.plannedDate || "",
+          completedDate:row.completedDate || "",
+          done:!!row.done
+        }))
+        .filter(row => row.service)
+    : [];
 }
 
 function eventServiceProgress(event){
   const rows = servicePlanForEvent(event);
   return {
-    done: rows.filter(r => r.done).length,
-    total: rows.length
+    done:rows.filter(r => r.done).length,
+    total:rows.length
   };
 }
 
-function renderMonthlyPlanBody(targetId, month, events, editable=false){
+function buildMonthlyServiceRow(eventId,rowData,editable=false){
+  const tr = document.createElement("tr");
+  tr.dataset.eventId = eventId;
+  tr.dataset.service = rowData.service;
+
+  if(rowData.done){
+    tr.classList.add("monthly-row-done");
+  }
+
+  const service = document.createElement("td");
+  service.className = "monthly-service";
+  service.textContent = rowData.service;
+
+  const planned = document.createElement("td");
+  const completed = document.createElement("td");
+  const done = document.createElement("td");
+  done.className = "monthly-done-cell";
+
+  if(editable){
+    const plannedInput = document.createElement("input");
+    plannedInput.type = "date";
+    plannedInput.className = "monthly-planned";
+    plannedInput.value = rowData.plannedDate || "";
+
+    const completedInput = document.createElement("input");
+    completedInput.type = "date";
+    completedInput.className = "monthly-completed";
+    completedInput.value = rowData.completedDate || "";
+
+    const doneInput = document.createElement("input");
+    doneInput.type = "checkbox";
+    doneInput.className = "monthly-done";
+    doneInput.checked = !!rowData.done;
+    doneInput.title = "Action réalisée";
+
+    planned.appendChild(plannedInput);
+    completed.appendChild(completedInput);
+    done.appendChild(doneInput);
+  }else{
+    planned.textContent = rowData.plannedDate
+      ? formatDateFr(rowData.plannedDate)
+      : "—";
+
+    completed.textContent = rowData.completedDate
+      ? formatDateFr(rowData.completedDate)
+      : "—";
+
+    done.innerHTML = rowData.done
+      ? '<span class="monthly-status done">✓ Réalisé</span>'
+      : '<span class="monthly-status pending">À réaliser</span>';
+  }
+
+  tr.append(service,planned,completed,done);
+  return tr;
+}
+
+function buildServiceSelector(event,serviceCatalog){
+  const selected = new Set(
+    servicePlanForEvent(event).map(row => row.service)
+  );
+
+  const panel = document.createElement("div");
+  panel.className = "service-selector no-export";
+  panel.dataset.eventId = event.id;
+  panel.hidden = true;
+
+  const title = document.createElement("div");
+  title.className = "service-selector-title";
+  title.innerHTML =
+    `<strong>Services concernés</strong>` +
+    `<span>Cochez uniquement les services à décliner pour cette action.</span>`;
+
+  const grid = document.createElement("div");
+  grid.className = "service-selector-grid";
+
+  (serviceCatalog || []).forEach(service => {
+    const label = document.createElement("label");
+    label.className = "service-choice";
+
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.className = "service-choice-check";
+    check.value = service;
+    check.checked = selected.has(service);
+
+    const text = document.createElement("span");
+    text.textContent = service;
+
+    label.append(check,text);
+    grid.appendChild(label);
+  });
+
+  const addRow = document.createElement("div");
+  addRow.className = "service-selector-add";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "service-catalog-new";
+  input.maxLength = 120;
+  input.placeholder = "Nouveau service à ajouter à la liste";
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "btn ghost service-catalog-add";
+  addBtn.dataset.eventId = event.id;
+  addBtn.textContent = "+ Ajouter un service";
+
+  addRow.append(input,addBtn);
+
+  const actions = document.createElement("div");
+  actions.className = "service-selector-actions";
+
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "btn ghost service-selector-cancel";
+  cancel.textContent = "Annuler";
+
+  const apply = document.createElement("button");
+  apply.type = "button";
+  apply.className = "btn primary service-selector-apply";
+  apply.dataset.eventId = event.id;
+  apply.textContent = "Appliquer la sélection";
+
+  actions.append(cancel,apply);
+
+  panel.append(title,grid,addRow,actions);
+  return panel;
+}
+
+function renderMonthlyPlanBody(
+  targetId,
+  month,
+  events,
+  editable=false,
+  serviceCatalog=[]
+){
   const root = document.getElementById(targetId);
   if(!root) return;
 
-  const items = monthEvents(events, month);
+  const items = monthEvents(events,month);
   root.innerHTML = "";
 
   if(!items.length){
@@ -211,93 +333,107 @@ function renderMonthlyPlanBody(targetId, month, events, editable=false){
   items.forEach(event => {
     const block = document.createElement("section");
     block.className = "monthly-event";
+    block.dataset.eventId = event.id;
 
+    const rows = servicePlanForEvent(event);
     const progress = eventServiceProgress(event);
 
     const head = document.createElement("div");
     head.className = "monthly-event-head";
-    head.innerHTML =
-      `<div class="monthly-event-title">` +
-        `<span class="badge ${event.type}">${event.type}</span>` +
-        `<div><strong>${escapeHtml(event.label)}</strong>` +
-        `<span>${escapeHtml(TYPE_LABELS[event.type] || event.type)}</span></div>` +
-      `</div>` +
-      `<div class="monthly-progress">${progress.done} / ${progress.total} services réalisés</div>`;
 
-    const tableWrap = document.createElement("div");
-    tableWrap.className = "monthly-table-wrap";
+    const title = document.createElement("div");
+    title.className = "monthly-event-title";
+    title.innerHTML =
+      `<span class="badge ${event.type}">${event.type}</span>` +
+      `<div>` +
+        `<strong>${escapeHtml(event.label)}</strong>` +
+        `<span>${escapeHtml(TYPE_LABELS[event.type] || event.type)}</span>` +
+      `</div>`;
 
-    const table = document.createElement("table");
-    table.className = "monthly-table";
-    table.innerHTML =
-      `<thead><tr>` +
-        `<th>Service</th>` +
-        `<th>Date prévisionnelle</th>` +
-        `<th>Date de réalisation</th>` +
-        `<th>Réalisé</th>` +
-      `</tr></thead>`;
+    const summary = document.createElement("div");
+    summary.className = "monthly-event-summary";
 
-    const tbody = document.createElement("tbody");
+    if(rows.length){
+      summary.innerHTML =
+        `<strong>${progress.done} / ${progress.total}</strong>` +
+        `<span>service${progress.total > 1 ? "s" : ""} réalisé${progress.total > 1 ? "s" : ""}</span>`;
+    }else{
+      summary.innerHTML =
+        `<span>Non décliné par service</span>`;
+    }
 
-    servicePlanForEvent(event).forEach(rowData => {
-      const tr = document.createElement("tr");
-      tr.dataset.eventId = event.id;
-      tr.dataset.service = rowData.service;
-      if(rowData.done) tr.classList.add("monthly-row-done");
+    head.append(title,summary);
 
-      const service = document.createElement("td");
-      service.className = "monthly-service";
-      service.textContent = rowData.service;
+    const content = document.createElement("div");
+    content.className = "monthly-event-content";
 
-      const planned = document.createElement("td");
-      const completed = document.createElement("td");
-      const done = document.createElement("td");
-      done.className = "monthly-done-cell";
+    if(rows.length){
+      const tableWrap = document.createElement("div");
+      tableWrap.className = "monthly-table-wrap";
 
-      if(editable){
-        const plannedInput = document.createElement("input");
-        plannedInput.type = "date";
-        plannedInput.className = "monthly-planned";
-        plannedInput.value = rowData.plannedDate;
+      const table = document.createElement("table");
+      table.className = "monthly-table";
 
-        const completedInput = document.createElement("input");
-        completedInput.type = "date";
-        completedInput.className = "monthly-completed";
-        completedInput.value = rowData.completedDate;
+      table.innerHTML =
+        `<thead><tr>` +
+          `<th>Service</th>` +
+          `<th>Date prévisionnelle</th>` +
+          `<th>Date de réalisation</th>` +
+          `<th>Réalisé</th>` +
+        `</tr></thead>`;
 
-        const doneInput = document.createElement("input");
-        doneInput.type = "checkbox";
-        doneInput.className = "monthly-done";
-        doneInput.checked = rowData.done;
-        doneInput.title = "Action réalisée";
+      const tbody = document.createElement("tbody");
 
-        planned.appendChild(plannedInput);
-        completed.appendChild(completedInput);
-        done.appendChild(doneInput);
-      }else{
-        planned.textContent = rowData.plannedDate
-          ? formatDateFr(rowData.plannedDate)
-          : "—";
-        completed.textContent = rowData.completedDate
-          ? formatDateFr(rowData.completedDate)
-          : "—";
+      rows.forEach(rowData => {
+        tbody.appendChild(
+          buildMonthlyServiceRow(
+            event.id,
+            rowData,
+            editable
+          )
+        );
+      });
 
-        done.innerHTML = rowData.done
-          ? '<span class="monthly-status done">✓ Réalisé</span>'
-          : '<span class="monthly-status pending">À réaliser</span>';
-      }
+      table.appendChild(tbody);
+      tableWrap.appendChild(table);
+      content.appendChild(tableWrap);
 
-      tr.append(service, planned, completed, done);
-      tbody.appendChild(tr);
-    });
+    }else{
+      const empty = document.createElement("div");
+      empty.className = "monthly-event-empty";
+      empty.textContent = editable
+        ? "Aucun service sélectionné pour cet événement."
+        : "Aucune déclinaison par service n’est programmée pour cet événement.";
 
-    table.appendChild(tbody);
-    tableWrap.appendChild(table);
-    block.append(head, tableWrap);
+      content.appendChild(empty);
+    }
+
+    if(editable){
+      const tools = document.createElement("div");
+      tools.className = "monthly-event-tools no-export";
+
+      const decline = document.createElement("button");
+      decline.type = "button";
+      decline.className = "monthly-decline-services";
+      decline.dataset.eventId = event.id;
+      decline.textContent = rows.length
+        ? "Modifier les services"
+        : "Décliner par service";
+
+      tools.appendChild(decline);
+      content.appendChild(tools);
+      content.appendChild(
+        buildServiceSelector(
+          event,
+          serviceCatalog
+        )
+      );
+    }
+
+    block.append(head,content);
     root.appendChild(block);
   });
 }
-
 function buildEventRow(e, editable=false, handlers={}){
   const row = document.createElement("div");
   row.className = `event-row ${e.type}${e.done ? " done" : ""}`;

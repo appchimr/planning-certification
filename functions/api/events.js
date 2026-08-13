@@ -5,16 +5,20 @@ const TYPE_ORDER = {
   TH:0, JT:1, PT:2, PR:3, TC:4, AS:5, EV:6, EP:7
 };
 
-const ALLOWED_SERVICES = new Set([
+const DEFAULT_SERVICES = [
   "Urgences",
   "Médecine",
   "SMR",
   "HAD",
   "Médecine addictologie",
   "SMR addictologie",
+  "HDJ CARP",
   "USLD",
-  "Psychiatrie"
-]);
+  "Psychiatrie",
+  "Laboratoire",
+  "Imagerie médicale",
+  "Pharmacie"
+];
 
 function json(data, status = 200) {
   return Response.json(data, {
@@ -72,8 +76,8 @@ function normalizePlanRow(row) {
     throw new Error("Événement de planification invalide.");
   }
 
-  if (!ALLOWED_SERVICES.has(service)) {
-    throw new Error(`Service invalide : ${service}`);
+  if (!service || service.length > 120) {
+    throw new Error("Nom de service invalide.");
   }
 
   if (!validIsoDate(plannedDate)) {
@@ -91,6 +95,35 @@ function normalizePlanRow(row) {
     completedDate,
     done: Boolean(row.done || completedDate)
   };
+}
+
+function normalizeServiceName(value) {
+  const name = String(value || "").trim();
+
+  if (!name || name.length > 120) {
+    throw new Error("Nom de service invalide.");
+  }
+
+  return name;
+}
+
+function normalizeServiceCatalog(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const unique = new Map();
+
+  values.forEach(value => {
+    const name = normalizeServiceName(value);
+    const key = name.toLocaleLowerCase("fr");
+
+    if (!unique.has(key)) {
+      unique.set(key, name);
+    }
+  });
+
+  return [...unique.values()];
 }
 
 function secureEqual(a, b) {
@@ -169,14 +202,44 @@ function makeEventUpserts(db, events) {
   return statements;
 }
 
-function makePlanInserts(db, rows) {
-  const active = rows.filter(r =>
-    r.plannedDate || r.completedDate || r.done
-  );
-
+function makeServiceUpserts(db, services) {
   const statements = [];
 
-  for (const chunk of chunks(active, 20)) {
+  for (const chunk of chunks(services, 30)) {
+    const values = chunk
+      .map(() => "(?,?,1,CURRENT_TIMESTAMP)")
+      .join(",");
+
+    const sql = `
+      INSERT INTO service_catalog (
+        name, sort_order, active, updated_at
+      )
+      VALUES ${values}
+      ON CONFLICT(name) DO UPDATE SET
+        sort_order = excluded.sort_order,
+        active = 1,
+        updated_at = CURRENT_TIMESTAMP
+    `;
+
+    const params = [];
+
+    chunk.forEach((name,index) => {
+      params.push(
+        name,
+        services.indexOf(name) + 1
+      );
+    });
+
+    statements.push(db.prepare(sql).bind(...params));
+  }
+
+  return statements;
+}
+
+function makePlanInserts(db, rows) {
+  const statements = [];
+
+  for (const chunk of chunks(rows, 20)) {
     const values = chunk
       .map(() => "(?,?,?,?,?,CURRENT_TIMESTAMP)")
       .join(",");
@@ -228,7 +291,7 @@ function makeDeleteByIds(db, table, column, ids) {
 }
 
 async function readAll(db) {
-  const [eventResult, planResult] = await db.batch([
+  const [eventResult,planResult,serviceResult] = await db.batch([
     db.prepare(`
       SELECT
         id, month, type, label, done,
@@ -247,6 +310,12 @@ async function readAll(db) {
         done
       FROM monthly_actions
       ORDER BY event_id ASC, service ASC
+    `),
+    db.prepare(`
+      SELECT name
+      FROM service_catalog
+      WHERE active = 1
+      ORDER BY sort_order ASC, name COLLATE NOCASE ASC
     `)
   ]);
 
@@ -258,36 +327,43 @@ async function readAll(db) {
     }
 
     planMap.get(row.eventId).push({
-      service: String(row.service),
-      plannedDate: row.plannedDate || "",
-      completedDate: row.completedDate || "",
-      done: Number(row.done) === 1
+      service:String(row.service),
+      plannedDate:row.plannedDate || "",
+      completedDate:row.completedDate || "",
+      done:Number(row.done) === 1
     });
   });
 
-  return (eventResult.results || []).map(row => ({
-    id: String(row.id),
-    month: String(row.month),
-    type: String(row.type),
-    label: String(row.label),
-    done: Number(row.done) === 1,
-    plannedDate: row.plannedDate || "",
-    completedDate: row.completedDate || "",
-    updatedAt: row.updatedAt || "",
-    servicePlan: planMap.get(String(row.id)) || []
+  const events = (eventResult.results || []).map(row => ({
+    id:String(row.id),
+    month:String(row.month),
+    type:String(row.type),
+    label:String(row.label),
+    done:Number(row.done) === 1,
+    plannedDate:row.plannedDate || "",
+    completedDate:row.completedDate || "",
+    updatedAt:row.updatedAt || "",
+    servicePlan:planMap.get(String(row.id)) || []
   }));
+
+  const services = (serviceResult.results || [])
+    .map(row => String(row.name))
+    .filter(Boolean);
+
+  return {events,services};
 }
 
 export async function onRequestGet(context) {
   try {
-    const events = await readAll(context.env.DB);
+    const data = await readAll(context.env.DB);
 
     return json({
-      ok: true,
-      events,
+      ok:true,
+      events:data.events,
+      services:data.services,
       serverTime: new Date().toISOString(),
       storage: "cloudflare-d1",
-      schemaVersion: 2
+      schemaVersion: 2.2
     });
 
   } catch (err) {
@@ -349,7 +425,7 @@ async function saveAllEvents(db, rawEvents) {
   return events.length;
 }
 
-async function saveMonthPlan(db, month, rawPlans) {
+async function saveMonthPlan(db, month, rawPlans, rawServices) {
   month = String(month || "").trim();
 
   if (!month || month.length > 40) {
@@ -365,6 +441,7 @@ async function saveMonthPlan(db, month, rawPlans) {
   }
 
   const plans = rawPlans.map(normalizePlanRow);
+  const services = normalizeServiceCatalog(rawServices);
 
   const eventResult = await db
     .prepare("SELECT id FROM events WHERE month = ?")
@@ -378,6 +455,7 @@ async function saveMonthPlan(db, month, rawPlans) {
   const filtered = plans.filter(p => validIds.has(p.eventId));
 
   const statements = [
+    ...makeServiceUpserts(db, services),
     db.prepare(`
       DELETE FROM monthly_actions
       WHERE event_id IN (
@@ -389,12 +467,10 @@ async function saveMonthPlan(db, month, rawPlans) {
 
   await db.batch(statements);
 
-  return filtered.filter(r =>
-    r.plannedDate || r.completedDate || r.done
-  ).length;
+  return filtered.length;
 }
 
-async function restoreAll(db, rawEvents) {
+async function restoreAll(db, rawEvents, rawServices) {
   if (!Array.isArray(rawEvents)) {
     throw new Error("Sauvegarde invalide.");
   }
@@ -405,6 +481,7 @@ async function restoreAll(db, rawEvents) {
 
   const events = rawEvents.map(normalizeEvent);
   const plans = [];
+  const services = normalizeServiceCatalog(rawServices);
 
   rawEvents.forEach(raw => {
     const id = String(raw.id || "").trim();
@@ -427,6 +504,13 @@ async function restoreAll(db, rawEvents) {
     ...makeEventUpserts(db, events),
     ...makePlanInserts(db, plans)
   ];
+
+  if (services.length) {
+    statements.push(
+      db.prepare("DELETE FROM service_catalog"),
+      ...makeServiceUpserts(db, services)
+    );
+  }
 
   await db.batch(statements);
 
@@ -464,7 +548,8 @@ export async function onRequestPost(context) {
     if (action === "saveAll") {
       const saved = await saveAllEvents(
         context.env.DB,
-        payload.events
+        payload.events,
+        payload.services
       );
 
       return json({
@@ -479,7 +564,8 @@ export async function onRequestPost(context) {
       const saved = await saveMonthPlan(
         context.env.DB,
         payload.month,
-        payload.plans
+        payload.plans,
+        payload.services
       );
 
       return json({
@@ -493,7 +579,8 @@ export async function onRequestPost(context) {
     if (action === "restoreAll") {
       const restored = await restoreAll(
         context.env.DB,
-        payload.events
+        payload.events,
+        payload.services
       );
 
       return json({

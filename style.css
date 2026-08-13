@@ -919,8 +919,8 @@ dialog::backdrop{
   }
 }
 
+/* V4.2 — déclinaison par service avec catalogue évolutif */
 
-/* V4 — planification mensuelle */
 .month-title{
   width:100%;
   appearance:none;
@@ -929,7 +929,7 @@ dialog::backdrop{
 
 .month-title-clickable{
   cursor:pointer;
-  transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  transition:transform .12s ease,box-shadow .12s ease,border-color .12s ease;
 }
 
 .month-title-clickable:hover{
@@ -952,18 +952,29 @@ dialog::backdrop{
 .monthly-dialog{
   width:min(1180px,96vw);
   max-width:none;
-  max-height:92vh;
+  height:min(88vh,860px);
+  max-height:88vh;
+  padding:0;
+  overflow:hidden;
+  border:0;
+  border-radius:14px;
+}
+
+.monthly-dialog::backdrop{
+  background:rgba(13,31,58,.34);
 }
 
 .monthly-dialog-shell{
+  height:100%;
+  min-height:0;
   display:flex;
   flex-direction:column;
-  max-height:92vh;
-  background:#f7f9fc;
+  background:#f5f8fc;
 }
 
 .monthly-dialog-head{
-  padding:16px 18px 12px;
+  flex:0 0 auto;
+  padding:14px 18px 11px;
   background:#fff;
   border-bottom:1px solid #dbe3ef;
 }
@@ -980,22 +991,27 @@ dialog::backdrop{
 }
 
 .monthly-admin-help{
-  margin:12px 16px 0;
+  flex:0 0 auto;
+  margin:10px 14px 0;
   border:1px solid #bfd1e7;
   background:#eef6ff;
   color:#315077;
   border-radius:8px;
-  padding:9px 11px;
+  padding:8px 10px;
   font-size:11.5px;
   line-height:1.35;
 }
 
 .monthly-plan-body{
-  padding:14px 16px;
-  overflow:auto;
+  flex:1 1 auto;
+  min-height:0;
+  padding:12px 14px 18px;
+  overflow-y:auto;
+  overflow-x:hidden;
   display:flex;
   flex-direction:column;
-  gap:13px;
+  gap:10px;
+  scrollbar-gutter:stable;
 }
 
 .monthly-empty{
@@ -1009,20 +1025,21 @@ dialog::backdrop{
 }
 
 .monthly-event{
+  flex:0 0 auto;
   background:#fff;
   border:1px solid #d6e0ed;
-  border-radius:11px;
-  overflow:hidden;
-  box-shadow:0 2px 8px rgba(20,42,80,.04);
+  border-radius:10px;
+  box-shadow:0 2px 7px rgba(20,42,80,.04);
 }
 
 .monthly-event-head{
   display:flex;
   justify-content:space-between;
   align-items:center;
-  gap:16px;
-  padding:9px 12px;
+  gap:14px;
+  padding:9px 11px;
   background:#f8fafc;
+  border-radius:10px 10px 0 0;
   border-bottom:1px solid #e1e8f2;
 }
 
@@ -1051,52 +1068,76 @@ dialog::backdrop{
   font-size:10.5px;
 }
 
-.monthly-progress{
-  font-size:11px;
-  color:#526985;
-  font-weight:800;
+.monthly-event-summary{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  color:#64748b;
+  font-size:10.5px;
   white-space:nowrap;
 }
 
+.monthly-event-summary strong{
+  color:#355171;
+}
+
+.monthly-event-content{
+  padding:0;
+}
+
+.monthly-event-empty{
+  padding:11px 12px;
+  color:#7a8798;
+  font-size:11px;
+  font-style:italic;
+}
+
 .monthly-table-wrap{
-  overflow:auto;
+  width:100%;
+  overflow-x:auto;
 }
 
 .monthly-table{
   width:100%;
   border-collapse:collapse;
-  min-width:720px;
+  min-width:680px;
 }
 
 .monthly-table th{
   background:#edf3fa;
   color:#375170;
-  font-size:10.5px;
+  font-size:10px;
   text-transform:uppercase;
-  letter-spacing:.2px;
+  letter-spacing:.15px;
   text-align:left;
-  padding:7px 9px;
+  padding:6px 8px;
   border-bottom:1px solid #d6e0ed;
+}
+
+.monthly-table th:first-child,
+.monthly-table td:first-child{
+  min-width:220px;
 }
 
 .monthly-table th:nth-child(2),
 .monthly-table th:nth-child(3),
 .monthly-table td:nth-child(2),
 .monthly-table td:nth-child(3){
-  width:190px;
+  width:185px;
 }
 
 .monthly-table th:last-child,
 .monthly-table td:last-child{
-  width:125px;
+  width:90px;
   text-align:center;
 }
 
 .monthly-table td{
-  padding:6px 9px;
+  padding:5px 8px;
   border-bottom:1px solid #edf1f6;
-  font-size:11.5px;
+  font-size:11px;
   color:#263b5e;
+  vertical-align:middle;
 }
 
 .monthly-table tbody tr:last-child td{
@@ -1113,6 +1154,7 @@ dialog::backdrop{
 }
 
 .monthly-table input[type="date"]{
+  box-sizing:border-box;
   width:100%;
   border:1px solid #bdcada;
   border-radius:6px;
@@ -1127,10 +1169,6 @@ dialog::backdrop{
   height:17px;
   accent-color:#22863a;
   cursor:pointer;
-}
-
-.monthly-done-cell{
-  vertical-align:middle;
 }
 
 .monthly-status{
@@ -1152,16 +1190,133 @@ dialog::backdrop{
   color:#6b7280;
 }
 
+.monthly-event-tools{
+  display:flex;
+  justify-content:flex-start;
+  padding:8px 11px 10px;
+  border-top:1px solid #edf1f6;
+}
+
+.monthly-decline-services{
+  appearance:none;
+  border:1px dashed #6385b0;
+  background:#fff;
+  color:#123e7c;
+  border-radius:6px;
+  padding:5px 10px;
+  font-size:10.5px;
+  font-weight:850;
+  cursor:pointer;
+}
+
+.monthly-decline-services:hover{
+  background:#f1f6fc;
+}
+
+.service-selector{
+  margin:0 11px 11px;
+  border:1px solid #bfcfe2;
+  border-radius:9px;
+  background:#f8fbff;
+  padding:11px;
+}
+
+.service-selector[hidden]{
+  display:none!important;
+}
+
+.service-selector-title{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  margin-bottom:9px;
+}
+
+.service-selector-title strong{
+  color:#163c71;
+  font-size:12px;
+}
+
+.service-selector-title span{
+  color:#6b7d94;
+  font-size:10.5px;
+}
+
+.service-selector-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:7px 9px;
+}
+
+.service-choice{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  min-height:32px;
+  border:1px solid #d7e0ec;
+  background:#fff;
+  border-radius:7px;
+  padding:5px 8px;
+  color:#274566;
+  font-size:10.5px;
+  font-weight:700;
+  cursor:pointer;
+}
+
+.service-choice:hover{
+  border-color:#91a9c7;
+  background:#f7fbff;
+}
+
+.service-choice input{
+  width:15px;
+  height:15px;
+  accent-color:#173f7a;
+}
+
+.service-selector-add{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px solid #dfe7f1;
+}
+
+.service-selector-add input{
+  flex:1 1 auto;
+  border:1px solid #bdcada;
+  border-radius:6px;
+  padding:7px 9px;
+  font-size:11px;
+}
+
+.service-selector-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:10px;
+}
+
 .monthly-dialog-actions{
-  padding:11px 16px 14px;
+  flex:0 0 auto;
+  padding:10px 14px 12px;
   background:#fff;
   border-top:1px solid #dbe3ef;
   margin-top:0;
 }
 
-@media(max-width:800px){
+@media(max-width:900px){
+  .service-selector-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+
+@media(max-width:650px){
   .monthly-dialog{
     width:98vw;
+    height:92vh;
+    max-height:92vh;
   }
 
   .monthly-event-head{
@@ -1169,7 +1324,16 @@ dialog::backdrop{
     flex-direction:column;
   }
 
-  .monthly-progress{
+  .monthly-event-summary{
     white-space:normal;
+  }
+
+  .service-selector-grid{
+    grid-template-columns:1fr;
+  }
+
+  .service-selector-add{
+    align-items:stretch;
+    flex-direction:column;
   }
 }
