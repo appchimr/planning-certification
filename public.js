@@ -1,15 +1,42 @@
+
 let events = [];
+let currentMonthlyMonth = "";
+
+const monthlyDialog = document.getElementById("monthlyDialog");
+const monthlyTitle = document.getElementById("monthlyTitle");
+
+function openMonthlyPublic(month){
+  currentMonthlyMonth = month;
+  monthlyTitle.textContent = `Planification mensuelle — ${month}`;
+  renderMonthlyPlanBody("monthlyPlanBody", month, events, false);
+  monthlyDialog.showModal();
+}
+
+function publicHandlers(){
+  return {
+    month: openMonthlyPublic
+  };
+}
 
 async function refreshPublic(){
   try{
     const data = await loadRemoteEvents();
     events = data.events;
-    renderPlanning("planning",events,false,{});
+    renderPlanning("planning",events,false,publicHandlers());
 
     const d = new Date(data.serverTime);
     const el = document.getElementById("lastUpdate");
     if(el){
       el.textContent = `Dernière actualisation : ${d.toLocaleString("fr-FR")}`;
+    }
+
+    if(monthlyDialog.open && currentMonthlyMonth){
+      renderMonthlyPlanBody(
+        "monthlyPlanBody",
+        currentMonthlyMonth,
+        events,
+        false
+      );
     }
   }catch(err){
     console.error(err);
@@ -22,6 +49,12 @@ async function refreshPublic(){
     }
   }
 }
+
+document.getElementById("closeMonthly")
+  ?.addEventListener("click",() => monthlyDialog.close());
+
+document.getElementById("closeMonthlyTop")
+  ?.addEventListener("click",() => monthlyDialog.close());
 
 document.getElementById("btnRefresh")?.addEventListener("click",refreshPublic);
 document.getElementById("btnExportPng")?.addEventListener("click",()=>exportPng().catch(()=>alert("Export PNG impossible.")));

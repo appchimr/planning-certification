@@ -1,8 +1,20 @@
-const ALLOWED_TYPES = new Set(["TH","PT","PR","TC","AS","EV","EP"]);
+
+const ALLOWED_TYPES = new Set(["TH","JT","PT","PR","TC","AS","EV","EP"]);
 
 const TYPE_ORDER = {
-  TH: 0, PT: 1, PR: 2, TC: 3, AS: 4, EV: 5, EP: 6
+  TH:0, JT:1, PT:2, PR:3, TC:4, AS:5, EV:6, EP:7
 };
+
+const ALLOWED_SERVICES = new Set([
+  "Urgences",
+  "Médecine",
+  "SMR",
+  "HAD",
+  "Médecine addictologie",
+  "SMR addictologie",
+  "USLD",
+  "Psychiatrie"
+]);
 
 function json(data, status = 200) {
   return Response.json(data, {
@@ -16,7 +28,9 @@ function validIsoDate(value) {
 }
 
 function normalizeEvent(ev) {
-  if (!ev || typeof ev !== "object") throw new Error("Événement invalide.");
+  if (!ev || typeof ev !== "object") {
+    throw new Error("Événement invalide.");
+  }
 
   const id = String(ev.id || "").trim();
   const month = String(ev.month || "").trim();
@@ -33,23 +47,63 @@ function normalizeEvent(ev) {
   if (!validIsoDate(completedDate)) throw new Error("Date réalisée invalide.");
 
   return {
-    id, month, type, label,
-    done: Boolean(ev.done),
+    id,
+    month,
+    type,
+    label,
+    done: Boolean(ev.done || completedDate),
     plannedDate,
     completedDate,
     sortOrder: TYPE_ORDER[type] ?? 99
   };
 }
 
+function normalizePlanRow(row) {
+  if (!row || typeof row !== "object") {
+    throw new Error("Ligne de planification invalide.");
+  }
+
+  const eventId = String(row.eventId || "").trim();
+  const service = String(row.service || "").trim();
+  const plannedDate = String(row.plannedDate || "").trim();
+  const completedDate = String(row.completedDate || "").trim();
+
+  if (!eventId || eventId.length > 100) {
+    throw new Error("Événement de planification invalide.");
+  }
+
+  if (!ALLOWED_SERVICES.has(service)) {
+    throw new Error(`Service invalide : ${service}`);
+  }
+
+  if (!validIsoDate(plannedDate)) {
+    throw new Error("Date prévisionnelle invalide.");
+  }
+
+  if (!validIsoDate(completedDate)) {
+    throw new Error("Date de réalisation invalide.");
+  }
+
+  return {
+    eventId,
+    service,
+    plannedDate,
+    completedDate,
+    done: Boolean(row.done || completedDate)
+  };
+}
+
 function secureEqual(a, b) {
   a = String(a || "");
   b = String(b || "");
+
   if (a.length !== b.length) return false;
 
   let diff = 0;
   for (let i = 0; i < a.length; i++) {
     diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
+
   return diff === 0;
 }
 
@@ -57,41 +111,331 @@ function checkAdmin(env, candidate) {
   if (!env.ADMIN_KEY) {
     throw new Error("Le secret ADMIN_KEY n’est pas configuré dans Cloudflare.");
   }
+
   return secureEqual(candidate, env.ADMIN_KEY);
 }
 
-export async function onRequestGet(context) {
-  try {
-    const result = await context.env.DB.prepare(`
+function chunks(array, size) {
+  const out = [];
+  for (let i = 0; i < array.length; i += size) {
+    out.push(array.slice(i, i + size));
+  }
+  return out;
+}
+
+function makeEventUpserts(db, events) {
+  const statements = [];
+
+  for (const chunk of chunks(events, 12)) {
+    const values = chunk
+      .map(() => "(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)")
+      .join(",");
+
+    const sql = `
+      INSERT INTO events (
+        id, month, type, label, done,
+        planned_date, completed_date, sort_order, updated_at
+      )
+      VALUES ${values}
+      ON CONFLICT(id) DO UPDATE SET
+        month = excluded.month,
+        type = excluded.type,
+        label = excluded.label,
+        done = excluded.done,
+        planned_date = excluded.planned_date,
+        completed_date = excluded.completed_date,
+        sort_order = excluded.sort_order,
+        updated_at = CURRENT_TIMESTAMP
+    `;
+
+    const params = [];
+
+    chunk.forEach(ev => {
+      params.push(
+        ev.id,
+        ev.month,
+        ev.type,
+        ev.label,
+        ev.done ? 1 : 0,
+        ev.plannedDate || null,
+        ev.completedDate || null,
+        ev.sortOrder
+      );
+    });
+
+    statements.push(db.prepare(sql).bind(...params));
+  }
+
+  return statements;
+}
+
+function makePlanInserts(db, rows) {
+  const active = rows.filter(r =>
+    r.plannedDate || r.completedDate || r.done
+  );
+
+  const statements = [];
+
+  for (const chunk of chunks(active, 20)) {
+    const values = chunk
+      .map(() => "(?,?,?,?,?,CURRENT_TIMESTAMP)")
+      .join(",");
+
+    const sql = `
+      INSERT INTO monthly_actions (
+        event_id, service, planned_date,
+        completed_date, done, updated_at
+      )
+      VALUES ${values}
+      ON CONFLICT(event_id, service) DO UPDATE SET
+        planned_date = excluded.planned_date,
+        completed_date = excluded.completed_date,
+        done = excluded.done,
+        updated_at = CURRENT_TIMESTAMP
+    `;
+
+    const params = [];
+
+    chunk.forEach(row => {
+      params.push(
+        row.eventId,
+        row.service,
+        row.plannedDate || null,
+        row.completedDate || null,
+        row.done ? 1 : 0
+      );
+    });
+
+    statements.push(db.prepare(sql).bind(...params));
+  }
+
+  return statements;
+}
+
+function makeDeleteByIds(db, table, column, ids) {
+  const statements = [];
+
+  for (const chunk of chunks(ids, 90)) {
+    const marks = chunk.map(() => "?").join(",");
+    statements.push(
+      db.prepare(
+        `DELETE FROM ${table} WHERE ${column} IN (${marks})`
+      ).bind(...chunk)
+    );
+  }
+
+  return statements;
+}
+
+async function readAll(db) {
+  const [eventResult, planResult] = await db.batch([
+    db.prepare(`
       SELECT
         id, month, type, label, done,
         planned_date AS plannedDate,
         completed_date AS completedDate,
         updated_at AS updatedAt
       FROM events
-      ORDER BY updated_at ASC, id ASC
-    `).all();
+      ORDER BY sort_order ASC, label COLLATE NOCASE ASC
+    `),
+    db.prepare(`
+      SELECT
+        event_id AS eventId,
+        service,
+        planned_date AS plannedDate,
+        completed_date AS completedDate,
+        done
+      FROM monthly_actions
+      ORDER BY event_id ASC, service ASC
+    `)
+  ]);
 
-    const events = (result.results || []).map(row => ({
-      id: String(row.id),
-      month: String(row.month),
-      type: String(row.type),
-      label: String(row.label),
-      done: Number(row.done) === 1,
+  const planMap = new Map();
+
+  (planResult.results || []).forEach(row => {
+    if (!planMap.has(row.eventId)) {
+      planMap.set(row.eventId, []);
+    }
+
+    planMap.get(row.eventId).push({
+      service: String(row.service),
       plannedDate: row.plannedDate || "",
       completedDate: row.completedDate || "",
-      updatedAt: row.updatedAt || ""
-    }));
+      done: Number(row.done) === 1
+    });
+  });
+
+  return (eventResult.results || []).map(row => ({
+    id: String(row.id),
+    month: String(row.month),
+    type: String(row.type),
+    label: String(row.label),
+    done: Number(row.done) === 1,
+    plannedDate: row.plannedDate || "",
+    completedDate: row.completedDate || "",
+    updatedAt: row.updatedAt || "",
+    servicePlan: planMap.get(String(row.id)) || []
+  }));
+}
+
+export async function onRequestGet(context) {
+  try {
+    const events = await readAll(context.env.DB);
 
     return json({
       ok: true,
       events,
       serverTime: new Date().toISOString(),
-      storage: "cloudflare-d1"
+      storage: "cloudflare-d1",
+      schemaVersion: 2
     });
+
   } catch (err) {
-    return json({ ok:false, error:String(err?.message || err) }, 500);
+    return json({
+      ok: false,
+      error: String(err?.message || err)
+    }, 500);
   }
+}
+
+async function saveAllEvents(db, rawEvents) {
+  if (!Array.isArray(rawEvents)) {
+    throw new Error("Liste d’événements invalide.");
+  }
+
+  if (rawEvents.length > 1000) {
+    throw new Error("Trop d’événements.");
+  }
+
+  const events = rawEvents.map(normalizeEvent);
+
+  const existing = await db
+    .prepare("SELECT id FROM events")
+    .all();
+
+  const incomingIds = new Set(events.map(e => e.id));
+  const removedIds = (existing.results || [])
+    .map(r => String(r.id))
+    .filter(id => !incomingIds.has(id));
+
+  const statements = [];
+
+  statements.push(...makeEventUpserts(db, events));
+
+  if (removedIds.length) {
+    statements.push(
+      ...makeDeleteByIds(
+        db,
+        "monthly_actions",
+        "event_id",
+        removedIds
+      )
+    );
+
+    statements.push(
+      ...makeDeleteByIds(
+        db,
+        "events",
+        "id",
+        removedIds
+      )
+    );
+  }
+
+  if (statements.length) {
+    await db.batch(statements);
+  }
+
+  return events.length;
+}
+
+async function saveMonthPlan(db, month, rawPlans) {
+  month = String(month || "").trim();
+
+  if (!month || month.length > 40) {
+    throw new Error("Mois invalide.");
+  }
+
+  if (!Array.isArray(rawPlans)) {
+    throw new Error("Planification mensuelle invalide.");
+  }
+
+  if (rawPlans.length > 500) {
+    throw new Error("Trop de lignes de planification.");
+  }
+
+  const plans = rawPlans.map(normalizePlanRow);
+
+  const eventResult = await db
+    .prepare("SELECT id FROM events WHERE month = ?")
+    .bind(month)
+    .all();
+
+  const validIds = new Set(
+    (eventResult.results || []).map(r => String(r.id))
+  );
+
+  const filtered = plans.filter(p => validIds.has(p.eventId));
+
+  const statements = [
+    db.prepare(`
+      DELETE FROM monthly_actions
+      WHERE event_id IN (
+        SELECT id FROM events WHERE month = ?
+      )
+    `).bind(month),
+    ...makePlanInserts(db, filtered)
+  ];
+
+  await db.batch(statements);
+
+  return filtered.filter(r =>
+    r.plannedDate || r.completedDate || r.done
+  ).length;
+}
+
+async function restoreAll(db, rawEvents) {
+  if (!Array.isArray(rawEvents)) {
+    throw new Error("Sauvegarde invalide.");
+  }
+
+  if (rawEvents.length > 1000) {
+    throw new Error("Sauvegarde trop volumineuse.");
+  }
+
+  const events = rawEvents.map(normalizeEvent);
+  const plans = [];
+
+  rawEvents.forEach(raw => {
+    const id = String(raw.id || "").trim();
+
+    if (Array.isArray(raw.servicePlan)) {
+      raw.servicePlan.forEach(row => {
+        plans.push(
+          normalizePlanRow({
+            ...row,
+            eventId:id
+          })
+        );
+      });
+    }
+  });
+
+  const statements = [
+    db.prepare("DELETE FROM monthly_actions"),
+    db.prepare("DELETE FROM events"),
+    ...makeEventUpserts(db, events),
+    ...makePlanInserts(db, plans)
+  ];
+
+  await db.batch(statements);
+
+  return {
+    events:events.length,
+    plans:plans.filter(r =>
+      r.plannedDate || r.completedDate || r.done
+    ).length
+  };
 }
 
 export async function onRequestPost(context) {
@@ -101,6 +445,7 @@ export async function onRequestPost(context) {
 
     if (action === "auth") {
       const ok = checkAdmin(context.env, payload.adminKey);
+
       return json({
         ok,
         error: ok ? undefined : "Clé d’administration invalide."
@@ -108,57 +453,66 @@ export async function onRequestPost(context) {
     }
 
     if (!checkAdmin(context.env, payload.adminKey)) {
-      return json({ ok:false, error:"Clé d’administration invalide." }, 401);
+      return json({
+        ok: false,
+        error: "Clé d’administration invalide."
+      }, 401);
     }
 
-    if (action !== "saveAll") {
-      return json({ ok:false, error:"Action inconnue." }, 400);
-    }
-
-    if (!Array.isArray(payload.events)) {
-      return json({ ok:false, error:"Liste d’événements invalide." }, 400);
-    }
-
-    if (payload.events.length > 1000) {
-      return json({ ok:false, error:"Trop d’événements." }, 400);
-    }
-
-    const events = payload.events.map(normalizeEvent);
     const now = new Date().toISOString();
 
-    const statements = [context.env.DB.prepare("DELETE FROM events")];
+    if (action === "saveAll") {
+      const saved = await saveAllEvents(
+        context.env.DB,
+        payload.events
+      );
 
-    const insert = context.env.DB.prepare(`
-      INSERT INTO events (
-        id, month, type, label, done,
-        planned_date, completed_date, sort_order, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    for (const ev of events) {
-      statements.push(insert.bind(
-        ev.id,
-        ev.month,
-        ev.type,
-        ev.label,
-        ev.done ? 1 : 0,
-        ev.plannedDate || null,
-        ev.completedDate || null,
-        ev.sortOrder,
-        now
-      ));
+      return json({
+        ok:true,
+        saved,
+        serverTime:now,
+        storage:"cloudflare-d1"
+      });
     }
 
-    await context.env.DB.batch(statements);
+    if (action === "saveMonthPlan") {
+      const saved = await saveMonthPlan(
+        context.env.DB,
+        payload.month,
+        payload.plans
+      );
+
+      return json({
+        ok:true,
+        saved,
+        serverTime:now,
+        storage:"cloudflare-d1"
+      });
+    }
+
+    if (action === "restoreAll") {
+      const restored = await restoreAll(
+        context.env.DB,
+        payload.events
+      );
+
+      return json({
+        ok:true,
+        restored,
+        serverTime:now,
+        storage:"cloudflare-d1"
+      });
+    }
 
     return json({
-      ok:true,
-      saved:events.length,
-      serverTime:now,
-      storage:"cloudflare-d1"
-    });
+      ok:false,
+      error:"Action inconnue."
+    }, 400);
+
   } catch (err) {
-    return json({ ok:false, error:String(err?.message || err) }, 500);
+    return json({
+      ok:false,
+      error:String(err?.message || err)
+    }, 500);
   }
 }

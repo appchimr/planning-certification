@@ -1,8 +1,9 @@
 
-const TYPE_ORDER = { TH:0, PT:1, PR:2, TC:3, AS:4, EV:5, EP:6 };
+const TYPE_ORDER = { TH:0, JT:1, PT:2, PR:3, TC:4, AS:5, EV:6, EP:7 };
 
 const TYPE_LABELS = {
   TH:"Thématique",
+  JT:"Journée thématique",
   PT:"Patient traceur",
   PR:"Parcours traceur",
   TC:"Traceur ciblé",
@@ -11,7 +12,18 @@ const TYPE_LABELS = {
   EP:"Expérience patient"
 };
 
-const DATED_TYPES = new Set(["PT","PR","TC","AS","EV","EP"]);
+const DATED_TYPES = new Set(["JT","PT","PR","TC","AS","EV","EP"]);
+
+const SERVICES = [
+  "Urgences",
+  "Médecine",
+  "SMR",
+  "HAD",
+  "Médecine addictologie",
+  "SMR addictologie",
+  "USLD",
+  "Psychiatrie"
+];
 
 const MONTHS = [
   "SEPTEMBRE 2026","OCTOBRE 2026","NOVEMBRE 2026","DÉCEMBRE 2026",
@@ -59,7 +71,7 @@ function renderLegend(targetId){
 
   el.innerHTML = "";
 
-  ["TH","PT","PR","TC","AS","EV","EP"].forEach(t => {
+  ["TH","JT","PT","PR","TC","AS","EV","EP"].forEach(t => {
     const item = document.createElement("div");
     item.className = "legend-item";
     item.innerHTML =
@@ -160,6 +172,132 @@ function eventDateText(e){
   return "";
 }
 
+function servicePlanForEvent(event){
+  const saved = Array.isArray(event.servicePlan) ? event.servicePlan : [];
+  const map = new Map(saved.map(r => [r.service, r]));
+
+  return SERVICES.map(service => {
+    const row = map.get(service) || {};
+    return {
+      service,
+      plannedDate: row.plannedDate || "",
+      completedDate: row.completedDate || "",
+      done: !!row.done
+    };
+  });
+}
+
+function eventServiceProgress(event){
+  const rows = servicePlanForEvent(event);
+  return {
+    done: rows.filter(r => r.done).length,
+    total: rows.length
+  };
+}
+
+function renderMonthlyPlanBody(targetId, month, events, editable=false){
+  const root = document.getElementById(targetId);
+  if(!root) return;
+
+  const items = monthEvents(events, month);
+  root.innerHTML = "";
+
+  if(!items.length){
+    root.innerHTML =
+      '<div class="monthly-empty">Aucun événement n’est programmé pour ce mois.</div>';
+    return;
+  }
+
+  items.forEach(event => {
+    const block = document.createElement("section");
+    block.className = "monthly-event";
+
+    const progress = eventServiceProgress(event);
+
+    const head = document.createElement("div");
+    head.className = "monthly-event-head";
+    head.innerHTML =
+      `<div class="monthly-event-title">` +
+        `<span class="badge ${event.type}">${event.type}</span>` +
+        `<div><strong>${escapeHtml(event.label)}</strong>` +
+        `<span>${escapeHtml(TYPE_LABELS[event.type] || event.type)}</span></div>` +
+      `</div>` +
+      `<div class="monthly-progress">${progress.done} / ${progress.total} services réalisés</div>`;
+
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "monthly-table-wrap";
+
+    const table = document.createElement("table");
+    table.className = "monthly-table";
+    table.innerHTML =
+      `<thead><tr>` +
+        `<th>Service</th>` +
+        `<th>Date prévisionnelle</th>` +
+        `<th>Date de réalisation</th>` +
+        `<th>Réalisé</th>` +
+      `</tr></thead>`;
+
+    const tbody = document.createElement("tbody");
+
+    servicePlanForEvent(event).forEach(rowData => {
+      const tr = document.createElement("tr");
+      tr.dataset.eventId = event.id;
+      tr.dataset.service = rowData.service;
+      if(rowData.done) tr.classList.add("monthly-row-done");
+
+      const service = document.createElement("td");
+      service.className = "monthly-service";
+      service.textContent = rowData.service;
+
+      const planned = document.createElement("td");
+      const completed = document.createElement("td");
+      const done = document.createElement("td");
+      done.className = "monthly-done-cell";
+
+      if(editable){
+        const plannedInput = document.createElement("input");
+        plannedInput.type = "date";
+        plannedInput.className = "monthly-planned";
+        plannedInput.value = rowData.plannedDate;
+
+        const completedInput = document.createElement("input");
+        completedInput.type = "date";
+        completedInput.className = "monthly-completed";
+        completedInput.value = rowData.completedDate;
+
+        const doneInput = document.createElement("input");
+        doneInput.type = "checkbox";
+        doneInput.className = "monthly-done";
+        doneInput.checked = rowData.done;
+        doneInput.title = "Action réalisée";
+
+        planned.appendChild(plannedInput);
+        completed.appendChild(completedInput);
+        done.appendChild(doneInput);
+      }else{
+        planned.textContent = rowData.plannedDate
+          ? formatDateFr(rowData.plannedDate)
+          : "—";
+        completed.textContent = rowData.completedDate
+          ? formatDateFr(rowData.completedDate)
+          : "—";
+
+        done.innerHTML = rowData.done
+          ? '<span class="monthly-status done">✓ Réalisé</span>'
+          : '<span class="monthly-status pending">À réaliser</span>';
+      }
+
+      tr.append(service, planned, completed, done);
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    block.append(head, tableWrap);
+    root.appendChild(block);
+  });
+}
+
 function buildEventRow(e, editable=false, handlers={}){
   const row = document.createElement("div");
   row.className = `event-row ${e.type}${e.done ? " done" : ""}`;
@@ -219,13 +357,21 @@ function buildEventRow(e, editable=false, handlers={}){
   return row;
 }
 
+function makeMonthTitle(month, handlers={}){
+  const title = document.createElement("button");
+  title.type = "button";
+  title.className = "month-title month-title-clickable";
+  title.textContent = month;
+  title.title = "Ouvrir la planification mensuelle";
+  title.addEventListener("click", () => handlers.month?.(month));
+  return title;
+}
+
 function buildMonthCard(month, events, editable=false, handlers={}){
   const card = document.createElement("div");
   card.className = `month-card ${phaseForMonth(month)}`.trim();
 
-  const title = document.createElement("div");
-  title.className = "month-title";
-  title.textContent = month;
+  const title = makeMonthTitle(month, handlers);
 
   const list = document.createElement("div");
   list.className = "event-list";
@@ -296,8 +442,9 @@ function buildFinalSection(events, editable=false, handlers={}){
 
   const jan = document.createElement("div");
   jan.className = "final-col phase-final";
-  jan.innerHTML =
-    '<div class="final-title">JANVIER 2028 · AUDITS SYSTÈME</div>';
+
+  const janTitle = makeMonthTitle("JANVIER 2028", handlers);
+  janTitle.classList.add("final-month-title");
 
   const list = document.createElement("div");
   list.className = "event-list";
@@ -305,7 +452,7 @@ function buildFinalSection(events, editable=false, handlers={}){
   monthEvents(events,"JANVIER 2028")
     .forEach(e => list.appendChild(buildEventRow(e,editable,handlers)));
 
-  jan.appendChild(list);
+  jan.append(janTitle, list);
 
   if(editable){
     const add = document.createElement("button");

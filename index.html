@@ -122,6 +122,25 @@
 
 </main>
 
+
+<dialog id="monthlyDialog" class="monthly-dialog">
+  <div class="monthly-dialog-shell">
+    <div class="dialog-head monthly-dialog-head">
+      <div>
+        <h3 id="monthlyTitle">Planification mensuelle</h3>
+        <p>Déclinaison des actions du mois par service.</p>
+      </div>
+      <button type="button" id="closeMonthlyTop" class="icon-btn">×</button>
+    </div>
+
+    <div id="monthlyPlanBody" class="monthly-plan-body"></div>
+
+    <div class="dialog-actions monthly-dialog-actions">
+      <button type="button" id="closeMonthly" class="btn primary">Fermer</button>
+    </div>
+  </div>
+</dialog>
+
 <div id="toast" class="toast"></div>
 
 <script src="config.js"></script>

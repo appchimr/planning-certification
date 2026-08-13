@@ -1,8 +1,9 @@
 
-const LOCAL_BACKUP_KEY = "chimr_has_2028_admin_backup_d1_v1";
+const LOCAL_BACKUP_KEY = "chimr_has_2028_admin_backup_d1_v4";
 
 let state = {events:[]};
 let unlocked = false;
+let currentMonthlyMonth = "";
 
 const dialog = document.getElementById("eventDialog");
 const form = document.getElementById("eventForm");
@@ -18,6 +19,11 @@ const eventCompletedDate = document.getElementById("eventCompletedDate");
 const dateFields = document.getElementById("dateFields");
 
 const adminKeyInput = document.getElementById("adminKey");
+
+const monthlyDialog = document.getElementById("monthlyDialog");
+const monthlyTitle = document.getElementById("monthlyTitle");
+const monthlyBody = document.getElementById("monthlyPlanBody");
+const btnSaveMonthly = document.getElementById("btnSaveMonthly");
 
 function fillMonths(){
   eventMonthSelect.innerHTML = "";
@@ -72,6 +78,10 @@ function handlers(){
     delete: id => {
       if(!ensureUnlocked()) return;
       deleteEvent(id);
+    },
+
+    month: month => {
+      openMonthlyAdmin(month);
     },
 
     toggle: async (id,done) => {
@@ -149,6 +159,16 @@ function setUnlocked(value){
 
   adminKeyInput.disabled = value;
   adminKeyInput.value = value ? "••••••••" : "";
+
+  if(monthlyDialog.open && currentMonthlyMonth){
+    renderMonthlyPlanBody(
+      "monthlyPlanBody",
+      currentMonthlyMonth,
+      state.events,
+      value
+    );
+    btnSaveMonthly.hidden = !value;
+  }
 }
 
 async function unlock(){
@@ -346,6 +366,152 @@ async function deleteEvent(id){
   }catch(_){}
 }
 
+function openMonthlyAdmin(month){
+  currentMonthlyMonth = month;
+  monthlyTitle.textContent = `Planification mensuelle — ${month}`;
+
+  renderMonthlyPlanBody(
+    "monthlyPlanBody",
+    month,
+    state.events,
+    unlocked
+  );
+
+  btnSaveMonthly.hidden = !unlocked;
+  monthlyDialog.showModal();
+}
+
+function collectMonthlyPlans(){
+  return [...monthlyBody.querySelectorAll("tbody tr[data-event-id]")]
+    .map(tr => {
+      const plannedDate =
+        tr.querySelector(".monthly-planned")?.value || "";
+      const completedDate =
+        tr.querySelector(".monthly-completed")?.value || "";
+      let done =
+        !!tr.querySelector(".monthly-done")?.checked;
+
+      if(completedDate) done = true;
+
+      return {
+        eventId:tr.dataset.eventId,
+        service:tr.dataset.service,
+        plannedDate,
+        completedDate,
+        done
+      };
+    });
+}
+
+function applyPlansToState(month, plans){
+  const byEvent = new Map();
+
+  plans.forEach(row => {
+    if(!byEvent.has(row.eventId)){
+      byEvent.set(row.eventId, []);
+    }
+
+    if(row.plannedDate || row.completedDate || row.done){
+      byEvent.get(row.eventId).push({
+        service:row.service,
+        plannedDate:row.plannedDate,
+        completedDate:row.completedDate,
+        done:row.done
+      });
+    }
+  });
+
+  state.events
+    .filter(e => e.month === month)
+    .forEach(e => {
+      e.servicePlan = byEvent.get(e.id) || [];
+    });
+}
+
+async function saveMonthlyPlan(){
+  if(!ensureUnlocked()) return;
+
+  const key = sessionStorage.getItem("HAS_ADMIN_KEY");
+  const plans = collectMonthlyPlans();
+
+  try{
+    setConnectionStatus(
+      "Enregistrement de la planification mensuelle…",
+      "warn"
+    );
+
+    const data = await postApi({
+      action:"saveMonthPlan",
+      adminKey:key,
+      month:currentMonthlyMonth,
+      plans
+    });
+
+    applyPlansToState(currentMonthlyMonth, plans);
+    localBackup();
+    render();
+
+    setConnectionStatus(
+      "Synchronisé avec Cloudflare D1",
+      "ok"
+    );
+
+    document.getElementById("saveState").textContent =
+      `Synchronisé à ${
+        new Date(data.serverTime)
+          .toLocaleTimeString(
+            "fr-FR",
+            {hour:"2-digit",minute:"2-digit"}
+          )
+      }`;
+
+    monthlyDialog.close();
+    toast("Planification mensuelle enregistrée");
+
+  }catch(err){
+    console.error(err);
+    setConnectionStatus(
+      "Enregistrement mensuel impossible",
+      "bad"
+    );
+    toast(err.message || "Erreur de sauvegarde");
+  }
+}
+
+monthlyBody.addEventListener("change",e => {
+  const tr = e.target.closest("tr[data-event-id]");
+  if(!tr) return;
+
+  const done = tr.querySelector(".monthly-done");
+  const completed = tr.querySelector(".monthly-completed");
+
+  if(e.target.classList.contains("monthly-done")){
+    if(done.checked && !completed.value){
+      completed.value = todayIso();
+    }
+
+    if(!done.checked){
+      completed.value = "";
+    }
+  }
+
+  if(e.target.classList.contains("monthly-completed")){
+    if(completed.value){
+      done.checked = true;
+    }
+  }
+
+  tr.classList.toggle("monthly-row-done", done.checked);
+});
+
+btnSaveMonthly.addEventListener("click",saveMonthlyPlan);
+
+document.getElementById("closeMonthlyTop")
+  .addEventListener("click",() => monthlyDialog.close());
+
+document.getElementById("cancelMonthly")
+  .addEventListener("click",() => monthlyDialog.close());
+
 form.addEventListener("submit",async ev => {
   ev.preventDefault();
 
@@ -375,7 +541,8 @@ form.addEventListener("submit",async ev => {
   }else{
     state.events.push({
       id:idNow(),
-      ...payload
+      ...payload,
+      servicePlan:[]
     });
   }
 
@@ -440,16 +607,33 @@ document.getElementById("fileImport")
         throw new Error("Format invalide");
       }
 
-      state = parsed;
+      const key = sessionStorage.getItem("HAS_ADMIN_KEY");
+
+      const data = await postApi({
+        action:"restoreAll",
+        adminKey:key,
+        events:parsed.events
+      });
+
+      state = {events:parsed.events};
+      localBackup();
       render();
 
-      await saveCentral();
+      document.getElementById("saveState").textContent =
+        `Restauré à ${
+          new Date(data.serverTime)
+            .toLocaleTimeString(
+              "fr-FR",
+              {hour:"2-digit",minute:"2-digit"}
+            )
+        }`;
 
       toast(
-        "Sauvegarde importée et enregistrée dans Cloudflare D1"
+        "Sauvegarde restaurée dans Cloudflare D1"
       );
 
     }catch(err){
+      console.error(err);
       alert(
         "Impossible d’importer cette sauvegarde."
       );
