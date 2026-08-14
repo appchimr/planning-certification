@@ -2321,3 +2321,125 @@ dialog::backdrop{
     padding:3px 6px;
   }
 }
+
+
+/* V4.9.4 — séparation visuelle des mois */
+.month-grid{
+  gap:8px;
+  padding:8px;
+  background:#e9eff7;
+  border:1px solid #24467e;
+  border-top:none;
+}
+
+.month-card{
+  border:1px solid #aebed2!important;
+  border-radius:8px;
+  box-shadow:0 2px 6px rgba(19,48,88,.07);
+  overflow:visible;
+}
+
+.month-card:nth-child(4n){
+  border-right:1px solid #aebed2!important;
+}
+
+.month-card .month-title{
+  margin:-1px -1px 8px;
+  border-color:rgba(72,105,149,.28);
+}
+
+/* Un léger renforcement au survol aide également à identifier le mois. */
+.month-card:hover{
+  border-color:#819ab9!important;
+  box-shadow:0 3px 9px rgba(19,48,88,.11);
+}
+
+/* Conserver les fonds de phase, mais légèrement plus différenciés. */
+.month-card.phase-training{
+  background:#f5f9ff;
+}
+
+.month-card.phase-transition{
+  background:#fff8ed;
+}
+
+.month-card.phase-final{
+  background:#fffbed;
+}
+
+
+/* V4.9.4 — bandeau mensuel teinté selon la méthode */
+.monthly-type-TH{
+  --monthly-method-color:var(--th);
+  --monthly-method-tint:#f6f0fb;
+}
+
+.monthly-type-PT{
+  --monthly-method-color:var(--pt);
+  --monthly-method-tint:#eef9fa;
+}
+
+.monthly-type-PR{
+  --monthly-method-color:var(--pr);
+  --monthly-method-tint:#eef4fd;
+}
+
+.monthly-type-TC{
+  --monthly-method-color:var(--tc);
+  --monthly-method-tint:#fff6eb;
+}
+
+.monthly-type-AS{
+  --monthly-method-color:var(--as);
+  --monthly-method-tint:#eff8f1;
+}
+
+.monthly-type-EV{
+  --monthly-method-color:var(--ev);
+  --monthly-method-tint:#fdf0f7;
+}
+
+.monthly-type-EP{
+  --monthly-method-color:var(--ep);
+  --monthly-method-tint:#eef8f6;
+}
+
+.monthly-type-CR{
+  --monthly-method-color:var(--cr);
+  --monthly-method-tint:#f3f4f6;
+}
+
+.monthly-type-JT{
+  --monthly-method-color:var(--jt);
+  --monthly-method-tint:#f1f1fd;
+}
+
+.monthly-type-FP{
+  --monthly-method-color:var(--fp);
+  --monthly-method-tint:#f5f1fd;
+}
+
+.monthly-event[class*="monthly-type-"] .monthly-event-head{
+  background:var(--monthly-method-tint);
+  border-left:4px solid var(--monthly-method-color);
+  padding-left:8px;
+}
+
+.monthly-event[class*="monthly-type-"]{
+  border-color:#cad6e5;
+}
+
+/* Le PDF mensuel conserve la teinte légère pour faciliter la lecture. */
+.monthly-pdf-export
+.monthly-event[class*="monthly-type-"]
+.monthly-event-head{
+  background:var(--monthly-method-tint)!important;
+  border-left:4px solid var(--monthly-method-color);
+}
+
+@media(max-width:900px){
+  .month-grid{
+    gap:6px;
+    padding:6px;
+  }
+}

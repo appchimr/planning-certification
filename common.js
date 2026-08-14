@@ -619,7 +619,8 @@ function renderMonthlyPlanBody(
 
   items.forEach(event => {
     const block = document.createElement("section");
-    block.className = "monthly-event";
+    block.className =
+      `monthly-event monthly-type-${event.type}`;
     block.dataset.eventId = event.id;
 
     const isTheme = event.type === "TH";
