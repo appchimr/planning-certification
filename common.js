@@ -157,9 +157,38 @@ function eventDateText(e){
     };
   }
 
+  // Une date programmée directement sur l'événement reste prioritaire.
   if(e.plannedDate){
     return {
       text:`Prévu le ${formatDateFr(e.plannedDate)}`,
+      status:"planned"
+    };
+  }
+
+  // Sinon, récupérer automatiquement la programmation détaillée
+  // saisie dans le suivi mensuel par service.
+  const serviceRows = servicePlanForEvent(e);
+  const servicePlannedDates = serviceRows
+    .map(row => row.plannedDate)
+    .filter(Boolean)
+    .sort();
+
+  if(servicePlannedDates.length){
+    const firstDate = servicePlannedDates[0];
+
+    // Pour une méthode concernant un seul service, la date est sans ambiguïté.
+    if(serviceRows.length === 1){
+      return {
+        text:`Prévu le ${formatDateFr(firstDate)}`,
+        status:"planned"
+      };
+    }
+
+    // Pour une action déclinée sur plusieurs services, afficher la première
+    // date programmée sans laisser croire que toutes les déclinaisons ont
+    // nécessairement lieu le même jour.
+    return {
+      text:`Prévu dès le ${formatDateFr(firstDate)}`,
       status:"planned"
     };
   }
