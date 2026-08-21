@@ -1,0 +1,15 @@
+V4.9.6 — DATE SUR LA MÊME LIGNE DANS LA VUE GLOBALE
+
+Modification visuelle :
+- « Prévu le … », « Prévu dès le … » ou « Réalisé le … » s'affiche désormais
+  à droite sur la même ligne que la méthode/action ;
+- suppression de la ligne supplémentaire sous le libellé ;
+- le bleu pour « Prévu » et le vert pour « Réalisé » sont conservés.
+
+Aucune migration D1.
+Schéma inchangé : 2.8.
+
+GitHub :
+remplacer uniquement
+- common.js
+- style.css

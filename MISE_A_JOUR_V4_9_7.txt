@@ -1,0 +1,10 @@
+V4.9.7 — ORDRE D'AFFICHAGE DE LA DATE
+
+Correction :
+PT  Médecine - HC                         Prévu le 16/09/2026
+
+Le type et le libellé sont à gauche.
+La date programmée/réalisée est alignée à droite sur la même ligne.
+
+Aucune migration D1.
+GitHub : remplacer uniquement common.js.

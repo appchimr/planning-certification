@@ -791,6 +791,10 @@ function buildEventRow(e, editable=false, handlers={}){
   label.textContent = e.label;
   content.appendChild(label);
 
+  // Le type et le libellé restent à gauche.
+  row.append(code, content);
+
+  // La date est ajoutée ensuite afin d'être alignée à droite.
   const dateInfo = eventDateText(e);
   if(dateInfo.text){
     const date = document.createElement("span");
@@ -799,8 +803,6 @@ function buildEventRow(e, editable=false, handlers={}){
     date.textContent = dateInfo.text;
     row.appendChild(date);
   }
-
-  row.append(code, content);
 
   if(editable){
     const actions = document.createElement("div");

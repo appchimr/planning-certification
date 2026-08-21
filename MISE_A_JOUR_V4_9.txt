@@ -1,0 +1,79 @@
+V4.9 — ÉVALUATEURS PAR SERVICE AVEC HÉRITAGE
+
+PRINCIPE
+Le suivi mensuel possède maintenant deux niveaux d'affectation :
+
+1. ÉVALUATEURS DE LA MÉTHODE / ACTION
+Le bouton actuel « Affecter les évaluateurs » reste disponible.
+Les personnes cochées deviennent les évaluateurs PAR DÉFAUT
+de toutes les déclinaisons par service.
+
+2. PERSONNALISATION PAR SERVICE
+Chaque ligne de service affiche une nouvelle colonne « Évaluateur(s) ».
+
+Par défaut :
+- la ligne affiche « Par défaut » ;
+- elle hérite automatiquement des évaluateurs de la méthode.
+
+Si nécessaire :
+- cliquer « Personnaliser » ;
+- cocher les personnes propres à ce service ;
+- cliquer « Appliquer ».
+
+La ligne affiche alors « Personnalisé ».
+
+Un bouton « Revenir aux évaluateurs par défaut » supprime
+la personnalisation locale et rétablit l'héritage.
+
+IMPORTANT
+Si les évaluateurs de la méthode sont modifiés :
+- toutes les lignes encore « Par défaut » suivent automatiquement ;
+- les lignes « Personnalisé » restent inchangées.
+
+Une personnalisation peut contenir 0, 1 ou plusieurs évaluateurs.
+
+AFFICHAGE
+La vue utilisateurs et le PDF mensuel affichent, pour chaque service,
+les évaluateurs réellement applicables à cette déclinaison.
+
+MIGRATION D1
+Exécuter migration_v4_9.sql.
+
+Cette migration est NON DESTRUCTIVE :
+- events n'est pas modifié ;
+- monthly_actions n'est pas reconstruit ;
+- event_assignments n'est pas modifié ;
+- les affectations générales V4.8 sont conservées.
+
+Elle crée uniquement :
+- service_evaluator_overrides
+- service_evaluator_assignments
+
+Contrôle attendu avant premières personnalisations :
+schema_version = 2.8
+nombre_evenements = 54 actuellement
+lignes_planification = 10 actuellement
+nombre_services = 12
+reglages_mensuels = 3
+nombre_evaluateurs = 4 ou plus
+affectations_evaluateurs = nombre actuel
+personnalisations_services = 0
+affectations_services = 0
+
+GITHUB
+Après la migration, remplacer seulement :
+- common.js
+- admin.js
+- style.css
+- functions/api/events.js
+
+TEST
+1. Affecter deux évaluateurs à une méthode.
+2. Vérifier que les services affichent « Par défaut » avec ces personnes.
+3. Sur un service, cliquer « Personnaliser » et choisir une autre personne.
+4. Enregistrer puis rouvrir le mois.
+5. La ligne doit rester « Personnalisé ».
+6. Modifier ensuite les évaluateurs généraux :
+   - les lignes « Par défaut » changent ;
+   - la ligne personnalisée ne change pas.
+7. Tester « Revenir aux évaluateurs par défaut ».
