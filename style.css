@@ -2443,3 +2443,33 @@ dialog::backdrop{
     padding:6px;
   }
 }
+
+
+/* V4.9.6 — date prévue/réalisée sur la même ligne que la méthode */
+.event-row{
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+
+.event-row .event-content{
+  flex:1 1 auto;
+  min-width:0;
+}
+
+.event-date-inline{
+  flex:0 0 auto;
+  margin-top:0;
+  margin-left:auto;
+  white-space:nowrap;
+  font-size:8.7px;
+  padding:2px 5px;
+  border-radius:5px;
+}
+
+@media(max-width:760px){
+  .event-date-inline{
+    font-size:8.2px;
+    padding:2px 4px;
+  }
+}

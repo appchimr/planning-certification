@@ -795,9 +795,9 @@ function buildEventRow(e, editable=false, handlers={}){
   if(dateInfo.text){
     const date = document.createElement("span");
     date.className =
-      `event-date ${dateInfo.status === "completed" ? "event-date-completed" : "event-date-planned"}`;
+      `event-date event-date-inline ${dateInfo.status === "completed" ? "event-date-completed" : "event-date-planned"}`;
     date.textContent = dateInfo.text;
-    content.appendChild(date);
+    row.appendChild(date);
   }
 
   row.append(code, content);
