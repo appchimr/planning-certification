@@ -1184,6 +1184,75 @@ monthlyBody.addEventListener("change",e => {
   );
 });
 
+
+monthlyBody.addEventListener("change",async event => {
+  const check = event.target.closest(".monthly-theme-done");
+
+  if(!check){
+    return;
+  }
+
+  if(!ensureUnlocked()){
+    check.checked = !check.checked;
+    return;
+  }
+
+  const item = state.events.find(
+    row => row.id === check.dataset.eventId
+  );
+
+  if(!item){
+    return;
+  }
+
+  const previous = !!item.done;
+  item.done = !!check.checked;
+
+  try{
+    const key = sessionStorage.getItem("HAS_ADMIN_KEY");
+
+    setConnectionStatus(
+      "Enregistrement de la thématique…",
+      "warn"
+    );
+
+    await postApi({
+      action:"saveAll",
+      adminKey:key,
+      events:state.events
+    });
+
+    localBackup();
+    render();
+
+    setConnectionStatus(
+      "Synchronisé avec Cloudflare D1",
+      "ok"
+    );
+
+    toast(
+      item.done
+        ? "Thématique marquée comme traitée."
+        : "Thématique repassée à traiter."
+    );
+
+  }catch(err){
+    console.error(err);
+    item.done = previous;
+    check.checked = previous;
+
+    setConnectionStatus(
+      "Enregistrement de la thématique impossible",
+      "bad"
+    );
+
+    toast(
+      err?.message ||
+      "Impossible d’enregistrer la thématique."
+    );
+  }
+});
+
 btnSaveMonthly.addEventListener("click",saveMonthlyPlan);
 
 document.getElementById("closeMonthlyTop")

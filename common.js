@@ -719,6 +719,30 @@ function renderMonthlyPlanBody(
 
     if(isTheme){
       head.append(title);
+
+      if(editable){
+        const themeStatus = document.createElement("label");
+        themeStatus.className = "monthly-theme-status no-export";
+
+        const check = document.createElement("input");
+        check.type = "checkbox";
+        check.className = "monthly-theme-done";
+        check.dataset.eventId = event.id;
+        check.checked = !!event.done;
+
+        const text = document.createElement("span");
+        text.textContent = "Thématique traitée";
+
+        themeStatus.append(check,text);
+        head.appendChild(themeStatus);
+      }else{
+        const themeStatus = document.createElement("span");
+        themeStatus.className =
+          `monthly-theme-readonly ${event.done ? "done" : "pending"}`;
+        themeStatus.textContent =
+          event.done ? "✓ Thématique traitée" : "À traiter";
+        head.appendChild(themeStatus);
+      }
     }else{
       const side = document.createElement("div");
       side.className = "monthly-event-side";

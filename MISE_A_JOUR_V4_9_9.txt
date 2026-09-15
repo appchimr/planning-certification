@@ -1,0 +1,23 @@
+V4.9.9 — THÉMATIQUE TRAITÉE DANS LE SUIVI MENSUEL
+
+Dans la vue mensuelle administrateur, la carte TH affiche désormais :
+☐ Thématique traitée
+
+- Cocher la case enregistre immédiatement la TH comme réalisée.
+- L'indicateur « Thématiques traitées » est mis à jour.
+- Décocher la case repasse la TH à « à traiter ».
+- Aucune déclinaison par service n'est nécessaire.
+- Aucune date n'est demandée pour TH.
+
+Dans la vue utilisateurs :
+- « ✓ Thématique traitée » si elle est cochée ;
+- « À traiter » sinon.
+
+Aucune migration D1.
+Schéma inchangé : 2.8.
+
+GitHub :
+remplacer uniquement
+- common.js
+- admin.js
+- style.css

@@ -2496,3 +2496,56 @@ dialog::backdrop{
   font-weight:800;
   white-space:nowrap;
 }
+
+
+/* V4.9.9 — statut de la thématique du mois */
+.monthly-theme-status{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  margin-left:auto;
+  padding:5px 8px;
+  border:1px solid #d6c5e7;
+  border-radius:7px;
+  background:#ffffffb8;
+  color:#6f36a3;
+  font-size:10px;
+  font-weight:850;
+  cursor:pointer;
+  white-space:nowrap;
+}
+
+.monthly-theme-status input{
+  width:16px;
+  height:16px;
+  accent-color:var(--th);
+  cursor:pointer;
+}
+
+.monthly-theme-readonly{
+  margin-left:auto;
+  padding:3px 7px;
+  border-radius:999px;
+  font-size:9.5px;
+  font-weight:850;
+  white-space:nowrap;
+}
+
+.monthly-theme-readonly.done{
+  background:#edf8f1;
+  color:#24733f;
+  border:1px solid #d0ead9;
+}
+
+.monthly-theme-readonly.pending{
+  background:#f2f4f7;
+  color:#6b7280;
+  border:1px solid #dde2e8;
+}
+
+@media(max-width:700px){
+  .monthly-theme-status,
+  .monthly-theme-readonly{
+    margin-left:0;
+  }
+}
