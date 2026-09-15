@@ -72,8 +72,11 @@ function renderLegend(targetId){
 }
 
 function renderStats(events){
-  const methods = events.filter(e => ["PT","PR","TC","AS"].includes(e.type));
-  const doneMethods = methods.filter(e => e.done);
+  // Toutes les actions datables du programme sont comptées :
+  // PT, PR, TC, AS, EV, EP, CR, JT et FP.
+  const actions = events.filter(e => DATED_TYPES.has(e.type));
+  const doneActions = actions.filter(e => e.done);
+
   const themes = events.filter(e => e.type === "TH");
   const doneThemes = themes.filter(e => e.done);
 
@@ -82,13 +85,17 @@ function renderStats(events){
   const tp = document.getElementById("themeProgress");
   const tb = document.getElementById("themeProgressBar");
 
-  if(mp) mp.textContent = `${doneMethods.length} / ${methods.length}`;
+  if(mp) mp.textContent = `${doneActions.length} / ${actions.length}`;
   if(mb) mb.style.width =
-    methods.length ? `${doneMethods.length / methods.length * 100}%` : "0%";
+    actions.length
+      ? `${doneActions.length / actions.length * 100}%`
+      : "0%";
 
   if(tp) tp.textContent = `${doneThemes.length} / ${themes.length}`;
   if(tb) tb.style.width =
-    themes.length ? `${doneThemes.length / themes.length * 100}%` : "0%";
+    themes.length
+      ? `${doneThemes.length / themes.length * 100}%`
+      : "0%";
 }
 
 function renderNext(events){
@@ -96,16 +103,50 @@ function renderNext(events){
   if(!el) return;
 
   const now = new Date();
+  const today =
+    new Date(now.getFullYear(),now.getMonth(),now.getDate());
 
-  const upcoming = events
-    .filter(e => !e.done && DATED_TYPES.has(e.type) && e.plannedDate)
-    .filter(e => {
-      const d = new Date(`${e.plannedDate}T12:00:00`);
-      return d >= new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const deadlines = [];
+
+  events
+    .filter(e => !e.done && DATED_TYPES.has(e.type))
+    .forEach(e => {
+      // Si une date globale existe, elle reste la référence.
+      if(e.plannedDate){
+        deadlines.push({
+          date:e.plannedDate,
+          type:e.type,
+          label:e.label,
+          service:""
+        });
+        return;
+      }
+
+      // Sinon, remonter les échéances détaillées du suivi mensuel.
+      servicePlanForEvent(e)
+        .filter(row =>
+          !row.done &&
+          !!row.plannedDate
+        )
+        .forEach(row => {
+          deadlines.push({
+            date:row.plannedDate,
+            type:e.type,
+            label:e.label,
+            service:row.service
+          });
+        });
+    });
+
+  const upcoming = deadlines
+    .filter(item => {
+      const d = new Date(`${item.date}T12:00:00`);
+      return d >= today;
     })
     .sort((a,b) =>
-      String(a.plannedDate).localeCompare(String(b.plannedDate)) ||
-      (TYPE_ORDER[a.type] ?? 99) - (TYPE_ORDER[b.type] ?? 99)
+      String(a.date).localeCompare(String(b.date)) ||
+      (TYPE_ORDER[a.type] ?? 99) - (TYPE_ORDER[b.type] ?? 99) ||
+      String(a.label).localeCompare(String(b.label),"fr")
     )
     .slice(0,5);
 
@@ -117,13 +158,21 @@ function renderNext(events){
     return;
   }
 
-  upcoming.forEach(e => {
+  upcoming.forEach(item => {
     const row = document.createElement("div");
     row.className = "next-item";
+
+    const service =
+      item.service
+        ? `<span class="next-service">${escapeHtml(item.service)}</span>`
+        : "";
+
     row.innerHTML =
-      `<span class="next-date">${formatDateFr(e.plannedDate)}</span>` +
-      `<span class="badge ${e.type} mini">${e.type}</span>` +
-      `<span>${escapeHtml(e.label)}</span>`;
+      `<span class="next-date">${formatDateFr(item.date)}</span>` +
+      `<span class="badge ${item.type} mini">${item.type}</span>` +
+      `<span class="next-label">${escapeHtml(item.label)}</span>` +
+      service;
+
     el.appendChild(row);
   });
 }

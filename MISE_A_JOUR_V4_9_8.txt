@@ -1,0 +1,33 @@
+V4.9.8 — CORRECTION DES INDICATEURS
+
+1. ACTIONS RÉALISÉES
+L'ancien indicateur « Méthodes réalisées » ne comptait que PT, PR, TC et AS.
+Il est renommé « Actions réalisées » et compte désormais tous les types datables :
+PT, PR, TC, AS, EV, EP, CR, JT et FP.
+
+TH reste suivi séparément dans « Thématiques traitées ».
+
+2. PROCHAINES ÉCHÉANCES DATÉES
+L'indicateur récupère maintenant :
+- la date globale de l'événement lorsqu'elle existe ;
+- sinon les dates prévisionnelles saisies dans le suivi mensuel par service.
+
+Une déclinaison déjà réalisée n'est plus présentée comme une échéance à venir.
+
+Lorsque l'échéance provient d'une déclinaison, le service concerné est indiqué.
+
+Exemple :
+16/09/2026 | PT | Médecine - HC | Médecine
+
+Les 5 prochaines échéances sont affichées par ordre chronologique.
+
+D1
+Aucune migration nécessaire.
+Schéma inchangé : 2.8.
+
+GITHUB
+Remplacer :
+- common.js
+- style.css
+- admin.html
+- index.html

@@ -2473,3 +2473,26 @@ dialog::backdrop{
     padding:2px 4px;
   }
 }
+
+
+/* V4.9.8 — échéances issues du suivi mensuel */
+.next-item{
+  align-items:center;
+}
+
+.next-label{
+  min-width:0;
+}
+
+.next-service{
+  display:inline-flex;
+  flex:0 0 auto;
+  margin-left:auto;
+  padding:2px 5px;
+  border-radius:999px;
+  background:#eef4fb;
+  color:#456582;
+  font-size:8.8px;
+  font-weight:800;
+  white-space:nowrap;
+}
