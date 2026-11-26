@@ -32,6 +32,64 @@ function validIsoDate(value) {
   return value === "" || /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
 }
 
+const MONTH_NAMES = [
+  "JANVIER", "FÉVRIER", "MARS", "AVRIL", "MAI", "JUIN",
+  "JUILLET", "AOÛT", "SEPTEMBRE", "OCTOBRE", "NOVEMBRE", "DÉCEMBRE"
+];
+
+function dateMonth(date) {
+  const name = MONTH_NAMES[Number(date.slice(5, 7)) - 1];
+  return name ? `${name} ${date.slice(0, 4)}` : "";
+}
+
+function normalizeScheduleHistory(records, eventId) {
+  if (!Array.isArray(records)) return [];
+
+  return records.map(record => {
+    const service = record.service ? normalizeServiceName(record.service) : "";
+    const fromMonth = String(record.fromMonth || "").trim();
+    const toMonth = String(record.toMonth || "").trim();
+    const fromDate = String(record.fromDate || "");
+    const toDate = String(record.toDate || "");
+    const changedAt = String(record.changedAt || "");
+
+    if (!fromMonth || fromMonth.length > 40 || !toMonth || toMonth.length > 40
+        || !validIsoDate(fromDate) || !validIsoDate(toDate)
+        || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(changedAt)) {
+      throw new Error("Historique de programmation invalide.");
+    }
+
+    return {eventId, service, fromMonth, fromDate, toMonth, toDate, changedAt};
+  });
+}
+
+class PlanningConflict extends Error {}
+
+async function writePlanning(db, statements, expectedRevision) {
+  // La contrainte NOT NULL annule le lot D1 si la révision a changé.
+  const guard = expectedRevision == null ? [] : [db.prepare(`
+    INSERT INTO app_meta(key, value)
+    SELECT 'planning_conflict', NULL
+    WHERE (SELECT value FROM app_meta WHERE key = 'planning_revision') <> ?
+  `).bind(String(expectedRevision))];
+
+  try {
+    await db.batch([
+      ...guard,
+      ...statements,
+      db.prepare(`
+        UPDATE app_meta SET value = CAST(value AS INTEGER) + 1
+        WHERE key = 'planning_revision'
+      `)
+    ]);
+  } catch (error) {
+    if (String(error?.message || error).includes("NOT NULL constraint failed: app_meta.value")) {
+      throw new PlanningConflict("Le planning a changé depuis son chargement. Actualisez-le avant de réessayer.");
+    }
+    throw error;
+  }
+}
+
 function normalizeEvent(ev) {
   if (!ev || typeof ev !== "object") {
     throw new Error("Événement invalide.");
@@ -89,6 +147,14 @@ function normalizePlanRow(row) {
     throw new Error("Date de réalisation invalide.");
   }
 
+  const plannedMonth = dateMonth(plannedDate) || String(row.plannedMonth || "").trim();
+  if (plannedMonth) {
+    const monthName = plannedMonth.slice(0, -5);
+    if (!MONTH_NAMES.includes(monthName) || !/ \d{4}$/.test(plannedMonth)) {
+      throw new Error("Mois d’intervention invalide.");
+    }
+  }
+
   const evaluatorMode =
     row.evaluatorMode === "custom"
       ? "custom"
@@ -106,6 +172,7 @@ function normalizePlanRow(row) {
   return {
     eventId,
     service,
+    plannedMonth,
     plannedDate,
     completedDate,
     done: Boolean(row.done || completedDate),
@@ -256,18 +323,19 @@ function makeServiceUpserts(db, services) {
 function makePlanInserts(db, rows) {
   const statements = [];
 
-  for (const chunk of chunks(rows, 20)) {
+  for (const chunk of chunks(rows, 16)) {
     const values = chunk
-      .map(() => "(?,?,?,?,?,CURRENT_TIMESTAMP)")
+      .map(() => "(?,?,?,?,?,?,CURRENT_TIMESTAMP)")
       .join(",");
 
     const sql = `
       INSERT INTO monthly_actions (
-        event_id, service, planned_date,
+        event_id, service, planned_month, planned_date,
         completed_date, done, updated_at
       )
       VALUES ${values}
       ON CONFLICT(event_id, service) DO UPDATE SET
+        planned_month = COALESCE(excluded.planned_month, monthly_actions.planned_month),
         planned_date = excluded.planned_date,
         completed_date = excluded.completed_date,
         done = excluded.done,
@@ -280,6 +348,7 @@ function makePlanInserts(db, rows) {
       params.push(
         row.eventId,
         row.service,
+        row.plannedMonth || null,
         row.plannedDate || null,
         row.completedDate || null,
         row.done ? 1 : 0
@@ -365,7 +434,9 @@ async function readAll(db) {
     evaluatorResult,
     assignmentResult,
     serviceOverrideResult,
-    serviceEvaluatorResult
+    serviceEvaluatorResult,
+    historyResult,
+    revisionResult
   ] = await db.batch([
     db.prepare(`
       SELECT
@@ -380,6 +451,7 @@ async function readAll(db) {
       SELECT
         event_id AS eventId,
         service,
+        planned_month AS plannedMonth,
         planned_date AS plannedDate,
         completed_date AS completedDate,
         done
@@ -428,7 +500,14 @@ async function readAll(db) {
         evaluator
       FROM service_evaluator_assignments
       ORDER BY event_id ASC, service ASC, evaluator ASC
-    `)
+    `),
+    db.prepare(`
+      SELECT event_id AS eventId, service, from_month AS fromMonth,
+        from_date AS fromDate, to_month AS toMonth, to_date AS toDate,
+        changed_at AS changedAt
+      FROM schedule_history ORDER BY id
+    `),
+    db.prepare("SELECT value FROM app_meta WHERE key = 'planning_revision'")
   ]);
 
   const overrideKeys = new Set(
@@ -465,9 +544,10 @@ async function readAll(db) {
 
     planMap.get(eventId).push({
       service,
+      plannedMonth:row.plannedMonth || "",
       plannedDate:row.plannedDate || "",
       completedDate:row.completedDate || "",
-      done:Number(row.done) === 1,
+      done:Number(row.done) === 1 || Boolean(row.completedDate),
       evaluatorMode:
         overrideKeys.has(key)
           ? "custom"
@@ -496,18 +576,37 @@ async function readAll(db) {
     evaluatorMap.get(eventId).push(evaluator);
   });
 
-  const events = (eventResult.results || []).map(row => ({
-    id:String(row.id),
-    month:String(row.month),
-    type:String(row.type),
-    label:String(row.label),
-    done:Number(row.done) === 1,
-    plannedDate:row.plannedDate || "",
-    completedDate:row.completedDate || "",
-    updatedAt:row.updatedAt || "",
-    evaluators:evaluatorMap.get(String(row.id)) || [],
-    servicePlan:planMap.get(String(row.id)) || []
-  }));
+  const historyMap = new Map();
+
+  for (const {eventId, ...entry} of historyResult.results || []) {
+    if (!historyMap.has(eventId)) historyMap.set(eventId, []);
+    historyMap.get(eventId).push(entry);
+  }
+
+  const events = (eventResult.results || []).map(row => {
+    const id = String(row.id);
+    const servicePlan = planMap.get(id) || [];
+    const trackedByService = row.type !== "TH" && servicePlan.length > 0;
+    const done = trackedByService
+      ? servicePlan.every(service => service.done)
+      : Number(row.done) === 1 || Boolean(row.completedDate);
+
+    return {
+      id,
+      month:String(row.month),
+      type:String(row.type),
+      label:String(row.label),
+      done,
+      plannedDate:row.plannedDate || "",
+      completedDate:trackedByService
+        ? (done ? servicePlan.map(service => service.completedDate).sort().at(-1) : "")
+        : row.completedDate || "",
+      updatedAt:row.updatedAt || "",
+      evaluators:evaluatorMap.get(id) || [],
+      servicePlan,
+      scheduleHistory:historyMap.get(id) || []
+    };
+  });
 
   const services = (serviceResult.results || [])
     .map(row => String(row.name))
@@ -530,7 +629,8 @@ async function readAll(db) {
     events,
     services,
     monthSettings,
-    evaluators
+    evaluators,
+    revision:revisionResult.results[0].value
   };
 }
 
@@ -546,7 +646,8 @@ export async function onRequestGet(context) {
       evaluators:data.evaluators,
       serverTime: new Date().toISOString(),
       storage: "cloudflare-d1",
-      schemaVersion: 2.8
+      schemaVersion: 2.9,
+      revision:data.revision
     });
 
   } catch (err) {
@@ -557,7 +658,7 @@ export async function onRequestGet(context) {
   }
 }
 
-async function saveAllEvents(db, rawEvents) {
+async function saveAllEvents(db, rawEvents, expectedRevision) {
   if (!Array.isArray(rawEvents)) {
     throw new Error("Liste d’événements invalide.");
   }
@@ -601,10 +702,7 @@ async function saveAllEvents(db, rawEvents) {
     );
   }
 
-  if (statements.length) {
-    await db.batch(statements);
-  }
-
+  await writePlanning(db, statements, expectedRevision);
   return events.length;
 }
 
@@ -613,7 +711,8 @@ async function saveMonthPlan(
   month,
   rawPlans,
   rawServices,
-  rawEvaluatorAssignments
+  rawEvaluatorAssignments,
+  expectedRevision
 ) {
   month = String(month || "").trim();
 
@@ -662,6 +761,8 @@ async function saveMonthPlan(
     )
   ]);
 
+  const plannedKeys = JSON.stringify(filteredPlans.map(row => [row.eventId,row.service]));
+
   const statements = [
     ...makeServiceUpserts(db,services),
     ...makeEvaluatorCatalogUpserts(db,evaluatorNames),
@@ -682,10 +783,13 @@ async function saveMonthPlan(
 
     db.prepare(`
       DELETE FROM monthly_actions
-      WHERE event_id IN (
-        SELECT id FROM events WHERE month = ?
-      )
-    `).bind(month),
+      WHERE event_id IN (SELECT id FROM events WHERE month = ?)
+        AND NOT EXISTS (
+          SELECT 1 FROM json_each(?)
+          WHERE json_extract(value,'$[0]') = monthly_actions.event_id
+            AND json_extract(value,'$[1]') = monthly_actions.service
+        )
+    `).bind(month, plannedKeys),
 
     ...makePlanInserts(db,filteredPlans),
     ...makeServiceEvaluatorOverrideInserts(
@@ -707,10 +811,27 @@ async function saveMonthPlan(
     ...makeEvaluatorAssignmentInserts(
       db,
       filteredAssignments
-    )
+    ),
+
+    db.prepare(`
+      UPDATE events SET
+        done = NOT EXISTS (
+          SELECT 1 FROM monthly_actions
+          WHERE event_id = events.id AND done = 0 AND completed_date IS NULL
+        ),
+        completed_date = CASE WHEN EXISTS (
+          SELECT 1 FROM monthly_actions
+          WHERE event_id = events.id AND done = 0 AND completed_date IS NULL
+        ) THEN NULL ELSE (
+          SELECT MAX(completed_date) FROM monthly_actions WHERE event_id = events.id
+        ) END,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE month = ? AND type <> 'TH'
+        AND EXISTS (SELECT 1 FROM monthly_actions WHERE event_id = events.id)
+    `).bind(month)
   ];
 
-  await db.batch(statements);
+  await writePlanning(db, statements, expectedRevision);
 
   return {
     plans:filteredPlans.length,
@@ -893,7 +1014,8 @@ async function restoreAll(
   rawEvents,
   rawServices,
   rawMonthSettings,
-  rawEvaluators
+  rawEvaluators,
+  expectedRevision
 ) {
   if (!Array.isArray(rawEvents)) {
     throw new Error("Sauvegarde invalide.");
@@ -906,11 +1028,13 @@ async function restoreAll(
   const events = rawEvents.map(normalizeEvent);
   const plans = [];
   const assignments = [];
+  const history = [];
   const services = normalizeServiceCatalog(rawServices);
   const monthSettings = normalizeMonthSettings(rawMonthSettings);
 
   rawEvents.forEach(raw => {
     const id = String(raw.id || "").trim();
+    history.push(...normalizeScheduleHistory(raw.scheduleHistory, id));
 
     if (Array.isArray(raw.servicePlan)) {
       raw.servicePlan.forEach(row => {
@@ -947,6 +1071,7 @@ async function restoreAll(
   ]);
 
   const statements = [
+    db.prepare("DELETE FROM schedule_history"),
     db.prepare("DELETE FROM service_evaluator_assignments"),
     db.prepare("DELETE FROM service_evaluator_overrides"),
     db.prepare("DELETE FROM monthly_actions"),
@@ -955,6 +1080,13 @@ async function restoreAll(
 
     ...makeEventUpserts(db,events),
     ...makePlanInserts(db,plans),
+    ...chunks(history, 14).map(entries => db.prepare(`
+      INSERT INTO schedule_history(event_id, service, from_month, from_date, to_month, to_date, changed_at)
+      VALUES ${entries.map(() => "(?,?,?,?,?,?,?)").join(",")}
+    `).bind(...entries.flatMap(entry => [
+      entry.eventId, entry.service, entry.fromMonth, entry.fromDate || null,
+      entry.toMonth, entry.toDate || null, entry.changedAt
+    ]))),
     ...makeServiceEvaluatorOverrideInserts(db,plans),
     ...makeServiceEvaluatorAssignmentInserts(db,plans),
     ...makeEvaluatorAssignmentInserts(db,assignments)
@@ -984,7 +1116,7 @@ async function restoreAll(
     );
   }
 
-  await db.batch(statements);
+  await writePlanning(db, statements, expectedRevision);
 
   return {
     events:events.length,
@@ -1022,15 +1154,13 @@ export async function onRequestPost(context) {
 
     if (action === "saveAll") {
       const saved = await saveAllEvents(
-        context.env.DB,
-        payload.events,
-        payload.services,
-        payload.monthSettings
+        context.env.DB, payload.events, payload.revision
       );
 
       return json({
         ok:true,
         saved,
+        planning:await readAll(context.env.DB),
         serverTime:now,
         storage:"cloudflare-d1"
       });
@@ -1042,12 +1172,14 @@ export async function onRequestPost(context) {
         payload.month,
         payload.plans,
         payload.services,
-        payload.evaluatorAssignments
+        payload.evaluatorAssignments,
+        payload.revision
       );
 
       return json({
         ok:true,
         saved,
+        planning:await readAll(context.env.DB),
         serverTime:now,
         storage:"cloudflare-d1"
       });
@@ -1119,12 +1251,14 @@ export async function onRequestPost(context) {
         payload.events,
         payload.services,
         payload.monthSettings,
-        payload.evaluators
+        payload.evaluators,
+        payload.revision
       );
 
       return json({
         ok:true,
         restored,
+        planning:await readAll(context.env.DB),
         serverTime:now,
         storage:"cloudflare-d1"
       });
@@ -1139,6 +1273,6 @@ export async function onRequestPost(context) {
     return json({
       ok:false,
       error:String(err?.message || err)
-    }, 500);
+    }, err instanceof PlanningConflict ? 409 : 500);
   }
 }

@@ -4,6 +4,29 @@ const LOCAL_BACKUP_KEY = "chimr_has_2028_admin_backup_d1_v4";
 let state = {events:[],services:[],monthSettings:[],evaluators:[]};
 let unlocked = false;
 let currentMonthlyMonth = "";
+let monthlyDraft = null;
+
+function applyRemoteState(data){
+  state = {
+    events:data.events,
+    services:Array.isArray(data.services) ? data.services : [],
+    monthSettings:Array.isArray(data.monthSettings) ? data.monthSettings : [],
+    evaluators:Array.isArray(data.evaluators) ? data.evaluators : [],
+    revision:data.revision
+  };
+}
+
+function renderMonthlyAdmin(){
+  renderMonthlyPlanBody(
+    "monthlyPlanBody",
+    currentMonthlyMonth,
+    monthlyDraft?.events || state.events,
+    unlocked,
+    monthlyDraft?.services || state.services,
+    state.evaluators,
+    openMonthlyAdmin
+  );
+}
 
 const dialog = document.getElementById("eventDialog");
 const form = document.getElementById("eventForm");
@@ -25,11 +48,11 @@ const monthlyTitle = document.getElementById("monthlyTitle");
 const monthlyBody = document.getElementById("monthlyPlanBody");
 const btnSaveMonthly = document.getElementById("btnSaveMonthly");
 
-function fillMonths(){
+function fillMonths(currentMonth){
   eventMonthSelect.innerHTML = "";
 
-  MONTHS
-    .filter(m => m !== "FÉVRIER 2028")
+  [...new Set([...MONTHS.slice(0,-1),currentMonth].filter(Boolean))]
+    .sort((a,b) => monthKey(a).localeCompare(monthKey(b)))
     .forEach(m => {
       const o = document.createElement("option");
       o.value = m;
@@ -53,13 +76,32 @@ function updateFormForType(){
 
 eventType.addEventListener("change",updateFormForType);
 
+function moveMonthSelect(select,month){
+  if(!month) return;
+  if(![...select.options].some(option => option.value === month)){
+    select.add(new Option(month,month));
+  }
+  select.value = month;
+}
+
+eventPlannedDate.addEventListener("change",() => {
+  moveMonthSelect(eventMonthSelect,dateMonth(eventPlannedDate.value));
+});
+
+eventMonthSelect.addEventListener("change",() => {
+  if(dateMonth(eventPlannedDate.value) !== eventMonthSelect.value){
+    eventPlannedDate.value = "";
+  }
+});
+
 eventDone.addEventListener("change",() => {
+  if(!eventDone.checked) eventCompletedDate.value = "";
   if(
     eventDone.checked &&
     DATED_TYPES.has(eventType.value) &&
     !eventCompletedDate.value
   ){
-    eventCompletedDate.value = todayIso();
+    eventCompletedDate.value = planningToday();
   }
 });
 
@@ -194,7 +236,7 @@ function collectMonthlyEvaluatorAssignments(){
     }));
 }
 
-function applyEvaluatorAssignmentsToState(month,assignments){
+function applyEvaluatorAssignmentsToDraft(month,assignments){
   const map = new Map(
     assignments.map(item => [
       item.eventId,
@@ -204,7 +246,7 @@ function applyEvaluatorAssignmentsToState(month,assignments){
     ])
   );
 
-  state.events
+  monthlyDraft.events
     .filter(event => event.month === month && event.type !== "TH")
     .forEach(event => {
       event.evaluators = map.get(event.id) || [];
@@ -235,11 +277,11 @@ async function addEvaluatorToCatalog(){
   }
 
   // Conserver les saisies en cours avant de reconstruire la fenêtre.
-  applyPlansToState(
+  applyPlansToDraft(
     currentMonthlyMonth,
     collectMonthlyPlans()
   );
-  applyEvaluatorAssignmentsToState(
+  applyEvaluatorAssignmentsToDraft(
     currentMonthlyMonth,
     collectMonthlyEvaluatorAssignments()
   );
@@ -263,14 +305,7 @@ async function addEvaluatorToCatalog(){
 
     renderEvaluatorCatalogAdmin();
 
-    renderMonthlyPlanBody(
-      "monthlyPlanBody",
-      currentMonthlyMonth,
-      state.events,
-      true,
-      state.services,
-      state.evaluators
-    );
+    renderMonthlyAdmin();
 
     toast(`Évaluateur « ${name} » ajouté.`);
   }catch(err){
@@ -312,7 +347,7 @@ function handlers(){
         e.done = done;
 
         if(done && DATED_TYPES.has(e.type) && !e.completedDate){
-          e.completedDate = todayIso();
+          e.completedDate = planningToday();
         }
 
         if(!done){
@@ -337,14 +372,6 @@ function idNow(){
   return "ev-" +
     Date.now().toString(36) +
     Math.random().toString(36).slice(2,6);
-}
-
-function todayIso(){
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,"0");
-  const day = String(d.getDate()).padStart(2,"0");
-  return `${y}-${m}-${day}`;
 }
 
 function localBackup(){
@@ -377,17 +404,7 @@ function setUnlocked(value){
   adminKeyInput.value = value ? "••••••••" : "";
 
   if(monthlyDialog.open && currentMonthlyMonth){
-    renderMonthlyPlanBody(
-      "monthlyPlanBody",
-      currentMonthlyMonth,
-      state.events,
-      value,
-      state.services,
-      state.evaluators
-    );
-    btnSaveMonthly.hidden = !value;
-    renderMonthUpgradeAdmin(currentMonthlyMonth);
-    renderEvaluatorCatalogAdmin();
+    openMonthlyAdmin(currentMonthlyMonth);
   }
 }
 
@@ -436,16 +453,7 @@ async function loadAdmin(){
 
     const data = await loadRemoteEvents();
 
-    state = {
-      events:data.events,
-      services:Array.isArray(data.services) ? data.services : [],
-      monthSettings:Array.isArray(data.monthSettings)
-        ? data.monthSettings
-        : [],
-      evaluators:Array.isArray(data.evaluators)
-        ? data.evaluators
-        : []
-    };
+    applyRemoteState(data);
     localBackup();
     render();
 
@@ -504,8 +512,13 @@ async function saveCentral(){
     const data = await postApi({
       action:"saveAll",
       adminKey:key,
-      events:state.events
+      events:state.events,
+      revision:state.revision
     });
+
+    applyRemoteState(data.planning);
+    localBackup();
+    render();
 
     setConnectionStatus(
       "Synchronisé avec Cloudflare D1",
@@ -544,12 +557,13 @@ function openNew(month){
   eventId.value = "";
   eventType.value = "TH";
   eventLabel.value = "";
+  fillMonths(month);
   eventMonthSelect.value = month;
   eventDone.checked = false;
   eventPlannedDate.value = "";
   eventCompletedDate.value = "";
 
-  updateFormForType();
+  configureEventForm();
 
   dialog.showModal();
 
@@ -566,17 +580,38 @@ function openEdit(id){
   eventId.value = e.id;
   eventType.value = e.type;
   eventLabel.value = e.label;
+  fillMonths(e.month);
   eventMonthSelect.value = e.month;
   eventDone.checked = !!e.done;
   eventPlannedDate.value = e.plannedDate || "";
   eventCompletedDate.value = e.completedDate || "";
 
-  updateFormForType();
+  configureEventForm(e);
 
   dialog.showModal();
 
   setTimeout(() => eventLabel.select(),40);
 }
+
+function configureEventForm(event){
+  const byService = event && servicePlanForEvent(event).length > 0;
+  eventMonthSelect.disabled = Boolean(byService);
+  eventDone.disabled = Boolean(byService);
+  eventPlannedDate.disabled = Boolean(byService);
+  eventCompletedDate.disabled = Boolean(byService);
+  eventType.querySelector('option[value="TH"]').disabled = Boolean(byService);
+
+  const help = document.getElementById("eventScheduleHelp");
+  help.textContent = byService
+    ? "Pour modifier les échéances ou les réalisations, ouvrez le suivi par service."
+    : "Pour reporter une évaluation, choisissez un autre mois et renseignez la nouvelle date si elle est connue.";
+  updateFormForType();
+  help.hidden = !DATED_TYPES.has(eventType.value);
+}
+
+eventType.addEventListener("change",() => {
+  document.getElementById("eventScheduleHelp").hidden = !DATED_TYPES.has(eventType.value);
+});
 
 async function deleteEvent(id){
   const e = state.events.find(x => x.id === id);
@@ -596,29 +631,39 @@ async function deleteEvent(id){
 }
 
 function openMonthlyAdmin(month){
-  currentMonthlyMonth = month;
-  monthlyTitle.textContent = `Planification mensuelle — ${month}`;
+  if(monthlyDialog.open && monthlyDraft && month !== currentMonthlyMonth){
+    const plansEdited = JSON.stringify(collectMonthlyPlans()) !== monthlyDraft.initialPlans;
+    const assignmentsEdited = JSON.stringify(collectMonthlyEvaluatorAssignments()) !== monthlyDraft.initialAssignments;
 
-  renderMonthlyPlanBody(
-    "monthlyPlanBody",
-    month,
-    state.events,
-    unlocked,
-    state.services,
-    state.evaluators
-  );
+    if((plansEdited || assignmentsEdited)
+        && !confirm("Changer de mois sans enregistrer les modifications en cours ?")){
+      return;
+    }
+  }
+
+  currentMonthlyMonth = month;
+  monthlyDraft = unlocked ? structuredClone(state) : null;
+  monthlyTitle.textContent = `Planification mensuelle — ${month}`;
+  renderMonthlyAdmin();
+
+  if(monthlyDraft){
+    monthlyDraft.initialPlans = JSON.stringify(collectMonthlyPlans());
+    monthlyDraft.initialAssignments = JSON.stringify(collectMonthlyEvaluatorAssignments());
+  }
 
   btnSaveMonthly.hidden = !unlocked;
-  monthlyDialog.showModal();
+  if(!monthlyDialog.open) monthlyDialog.showModal();
   renderMonthUpgradeAdmin(month);
   renderEvaluatorCatalogAdmin();
 }
 
 function collectMonthlyPlans(){
-  return [...monthlyBody.querySelectorAll("tbody tr[data-event-id]")]
+  return [...monthlyBody.querySelectorAll("tbody tr[data-editable=true]")]
     .map(tr => {
       const service =
         String(tr.dataset.service || "").trim();
+
+      const plannedMonth = tr.querySelector(".monthly-planned-month").value;
 
       const plannedDate =
         tr.querySelector(".monthly-planned")?.value || "";
@@ -650,6 +695,7 @@ function collectMonthlyPlans(){
       return {
         eventId:tr.dataset.eventId,
         service,
+        plannedMonth,
         plannedDate,
         completedDate,
         done,
@@ -661,82 +707,23 @@ function collectMonthlyPlans(){
 }
 
 
-function syncParentCompletionFromServicePlans(month){
-  let changed = false;
-
-  state.events
-    .filter(event => event.month === month)
-    .forEach(event => {
-      const rows = servicePlanForEvent(event);
-
-      // Sans déclinaison par service, le statut global reste géré manuellement.
-      if(!rows.length){
-        return;
-      }
-
-      const allCompleted = rows.every(row =>
-        row.done && row.completedDate
-      );
-
-      if(allCompleted){
-        const latestCompletedDate = rows
-          .map(row => row.completedDate)
-          .filter(Boolean)
-          .sort()
-          .at(-1);
-
-        if(
-          latestCompletedDate &&
-          (!event.done || event.completedDate !== latestCompletedDate)
-        ){
-          event.done = true;
-          event.completedDate = latestCompletedDate;
-          changed = true;
-        }
-
-        return;
-      }
-
-      // Dès lors qu'une action est déclinée par service, le suivi mensuel
-      // devient la source du statut global : si une ligne n'est plus réalisée
-      // et datée, l'événement global repasse à "à réaliser".
-      if(event.done || event.completedDate){
-        event.done = false;
-        event.completedDate = "";
-        changed = true;
-      }
-    });
-
-  return changed;
-}
-
-function applyPlansToState(month, plans){
+function applyPlansToDraft(month,plans){
   const byEvent = new Map();
 
-  plans.forEach(row => {
-    if(!byEvent.has(row.eventId)){
-      byEvent.set(row.eventId, []);
-    }
-
-    if(row.service){
-      byEvent.get(row.eventId).push({
-        service:row.service,
-        plannedDate:row.plannedDate,
-        completedDate:row.completedDate,
-        done:row.done
-      });
-    }
+  plans.forEach(({eventId,...row}) => {
+    if(!byEvent.has(eventId)) byEvent.set(eventId,[]);
+    byEvent.get(eventId).push(row);
   });
 
-  state.events
-    .filter(e => e.month === month)
-    .forEach(e => {
-      e.servicePlan = byEvent.get(e.id) || [];
+  monthlyDraft.events
+    .filter(event => event.month === month && event.type !== "TH")
+    .forEach(event => {
+      event.servicePlan = byEvent.get(event.id) || [];
     });
 }
 
 async function saveMonthlyPlan(){
-  if(!ensureUnlocked()) return;
+  if(!ensureUnlocked() || btnSaveMonthly.disabled) return;
 
   const key = sessionStorage.getItem("HAS_ADMIN_KEY");
   const plans = collectMonthlyPlans();
@@ -756,6 +743,7 @@ async function saveMonthlyPlan(){
     seen.add(duplicateKey);
   }
 
+  btnSaveMonthly.disabled = true;
   try{
     setConnectionStatus(
       "Enregistrement de la planification mensuelle…",
@@ -767,27 +755,12 @@ async function saveMonthlyPlan(){
       adminKey:key,
       month:currentMonthlyMonth,
       plans,
-      services:state.services,
+      services:monthlyDraft.services,
+      revision:monthlyDraft.revision,
       evaluatorAssignments
     });
 
-    applyPlansToState(currentMonthlyMonth, plans);
-    applyEvaluatorAssignmentsToState(
-      currentMonthlyMonth,
-      evaluatorAssignments
-    );
-
-    const parentChanged =
-      syncParentCompletionFromServicePlans(currentMonthlyMonth);
-
-    if(parentChanged){
-      await postApi({
-        action:"saveAll",
-        adminKey:key,
-        events:state.events
-      });
-    }
-
+    applyRemoteState(data.planning);
     localBackup();
     render();
 
@@ -815,6 +788,8 @@ async function saveMonthlyPlan(){
       "bad"
     );
     toast(err.message || "Erreur de sauvegarde");
+  }finally{
+    btnSaveMonthly.disabled = false;
   }
 }
 
@@ -862,7 +837,7 @@ monthlyBody.addEventListener("click",e => {
 
     tr.dataset.evaluatorMode = "custom";
 
-    const event = state.events.find(
+    const event = monthlyDraft.events.find(
       item => item.id === tr.dataset.eventId
     );
 
@@ -925,7 +900,7 @@ monthlyBody.addEventListener("click",e => {
 
     tr.dataset.evaluatorMode = "inherit";
 
-    const event = state.events.find(
+    const event = monthlyDraft.events.find(
       item => item.id === tr.dataset.eventId
     );
 
@@ -1028,7 +1003,7 @@ monthlyBody.addEventListener("click",e => {
       return;
     }
 
-    const exists = state.services.some(
+    const exists = monthlyDraft.services.some(
       s => s.toLocaleLowerCase("fr") === name.toLocaleLowerCase("fr")
     );
 
@@ -1039,14 +1014,15 @@ monthlyBody.addEventListener("click",e => {
     }
 
     // Preserve dates currently typed before re-render
-    applyPlansToState(
+    applyPlansToDraft(
       currentMonthlyMonth,
       collectMonthlyPlans()
     );
+    applyEvaluatorAssignmentsToDraft(currentMonthlyMonth,collectMonthlyEvaluatorAssignments());
 
-    state.services.push(name);
+    monthlyDraft.services.push(name);
 
-    const event = state.events.find(
+    const event = monthlyDraft.events.find(
       ev => ev.id === add.dataset.eventId
     );
 
@@ -1065,14 +1041,7 @@ monthlyBody.addEventListener("click",e => {
       event.servicePlan = current;
     }
 
-    renderMonthlyPlanBody(
-      "monthlyPlanBody",
-      currentMonthlyMonth,
-      state.events,
-      true,
-      state.services,
-      state.evaluators
-    );
+    renderMonthlyAdmin();
 
     const newPanel = monthlyBody.querySelector(
       `.service-selector[data-event-id="${CSS.escape(add.dataset.eventId)}"]`
@@ -1092,12 +1061,13 @@ monthlyBody.addEventListener("click",e => {
     if(!ensureUnlocked()) return;
 
     // Preserve all dates typed before applying new service selection
-    applyPlansToState(
+    applyPlansToDraft(
       currentMonthlyMonth,
       collectMonthlyPlans()
     );
+    applyEvaluatorAssignmentsToDraft(currentMonthlyMonth,collectMonthlyEvaluatorAssignments());
 
-    const event = state.events.find(
+    const event = monthlyDraft.events.find(
       ev => ev.id === apply.dataset.eventId
     );
 
@@ -1116,7 +1086,7 @@ monthlyBody.addEventListener("click",e => {
 
     const removedWithData = previous.filter(row =>
       !selected.includes(row.service) &&
-      (row.plannedDate || row.completedDate || row.done)
+      (row.plannedDate || row.completedDate || row.done || row.plannedMonth !== event.month)
     );
 
     if(
@@ -1141,14 +1111,7 @@ monthlyBody.addEventListener("click",e => {
       };
     });
 
-    renderMonthlyPlanBody(
-      "monthlyPlanBody",
-      currentMonthlyMonth,
-      state.events,
-      true,
-      state.services,
-      state.evaluators
-    );
+    renderMonthlyAdmin();
 
     toast("Sélection des services appliquée.");
     return;
@@ -1157,14 +1120,19 @@ monthlyBody.addEventListener("click",e => {
 
 monthlyBody.addEventListener("change",e => {
   const tr = e.target.closest("tr[data-event-id]");
-  if(!tr) return;
+  if(!tr || tr.dataset.editable !== "true") return;
+
+  const month = tr.querySelector(".monthly-planned-month");
+  const date = tr.querySelector(".monthly-planned");
+  if(e.target === date) moveMonthSelect(month,dateMonth(date.value));
+  if(e.target === month && dateMonth(date.value) !== month.value) date.value = "";
 
   const done = tr.querySelector(".monthly-done");
   const completed = tr.querySelector(".monthly-completed");
 
   if(e.target.classList.contains("monthly-done")){
     if(done.checked && !completed.value){
-      completed.value = todayIso();
+      completed.value = planningToday();
     }
 
     if(!done.checked){
@@ -1216,12 +1184,19 @@ monthlyBody.addEventListener("change",async event => {
       "warn"
     );
 
-    await postApi({
+    const data = await postApi({
       action:"saveAll",
       adminKey:key,
-      events:state.events
+      events:state.events,
+      revision:monthlyDraft.revision
     });
 
+    applyRemoteState(data.planning);
+    const draftItem = monthlyDraft?.events.find(row => row.id === item.id);
+    if(draftItem){
+      draftItem.done = item.done;
+      monthlyDraft.revision = state.revision;
+    }
     localBackup();
     render();
 
@@ -1254,6 +1229,9 @@ monthlyBody.addEventListener("change",async event => {
 });
 
 btnSaveMonthly.addEventListener("click",saveMonthlyPlan);
+monthlyDialog.addEventListener("close",() => {
+  if(!monthlyDialog.open) monthlyDraft = null;
+});
 
 document.getElementById("closeMonthlyTop")
   .addEventListener("click",() => monthlyDialog.close());
@@ -1263,6 +1241,7 @@ document.getElementById("cancelMonthly")
 
 form.addEventListener("submit",async ev => {
   ev.preventDefault();
+  if(!ensureUnlocked()) return;
 
   const hasDates = DATED_TYPES.has(eventType.value);
 
@@ -1322,52 +1301,12 @@ document.getElementById("btnExportPng")
 document.getElementById("btnMonthlyPdf")
   ?.addEventListener("click",async () => {
     try{
-      if(monthlyDialog.open && currentMonthlyMonth && unlocked){
-        const draftPlans = collectMonthlyPlans();
-
-        const snapshot = JSON.parse(
-          JSON.stringify(state.events)
-        );
-
-        applyPlansToState(
-          currentMonthlyMonth,
-          draftPlans
-        );
-
-        applyEvaluatorAssignmentsToState(
-          currentMonthlyMonth,
-          collectMonthlyEvaluatorAssignments()
-        );
-
-        syncParentCompletionFromServicePlans(
-          currentMonthlyMonth
-        );
-
-        await exportMonthlyPdf(
-          currentMonthlyMonth,
-          state.events
-        );
-
-        state.events = snapshot;
-        render();
-
-        if(monthlyDialog.open){
-          renderMonthlyPlanBody(
-            "monthlyPlanBody",
-            currentMonthlyMonth,
-            state.events,
-            true,
-            state.services,
-            state.evaluators
-          );
-        }
-
-      }else{
-        await exportMonthlyPdf(
-          currentMonthlyMonth,
-          state.events
-        );
+      if(monthlyDraft){
+        applyPlansToDraft(currentMonthlyMonth,collectMonthlyPlans());
+        applyEvaluatorAssignmentsToDraft(currentMonthlyMonth,collectMonthlyEvaluatorAssignments());
       }
+
+      await exportMonthlyPdf(currentMonthlyMonth,monthlyDraft?.events || state.events);
     }catch(err){
       console.error(err);
       alert(
@@ -1421,6 +1360,7 @@ document.getElementById("fileImport")
         action:"restoreAll",
         adminKey:key,
         events:parsed.events,
+        revision:state.revision,
         services:Array.isArray(parsed.services) ? parsed.services : state.services,
         monthSettings:Array.isArray(parsed.monthSettings)
           ? parsed.monthSettings
@@ -1430,18 +1370,7 @@ document.getElementById("fileImport")
           : state.evaluators
       });
 
-      state = {
-        events:parsed.events,
-        services:Array.isArray(parsed.services)
-          ? parsed.services
-          : state.services,
-        monthSettings:Array.isArray(parsed.monthSettings)
-          ? parsed.monthSettings
-          : state.monthSettings,
-        evaluators:Array.isArray(parsed.evaluators)
-          ? parsed.evaluators
-          : state.evaluators
-      };
+      applyRemoteState(data.planning);
       localBackup();
       render();
 

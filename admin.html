@@ -105,6 +105,7 @@
       <div class="progress">
         <span id="methodProgressBar"></span>
       </div>
+      <div id="scheduleIndicators" class="schedule-indicators"></div>
     </div>
 
     <div class="metric">
@@ -123,7 +124,7 @@
 
     <div class="metric">
       <span class="metric-label">
-        Prochaines échéances datées
+        Prochaines échéances
       </span>
 
       <div id="nextList" class="next-list"></div>
@@ -245,13 +246,15 @@
     </label>
 
     <label>
-      Mois
+      Mois de programmation
 
       <select
         id="eventMonthSelect"
         required>
       </select>
     </label>
+
+    <p id="eventScheduleHelp" class="event-schedule-help" hidden></p>
 
     <div
       id="dateFields"
@@ -313,13 +316,13 @@
     <div class="dialog-head monthly-dialog-head">
       <div>
         <h3 id="monthlyTitle">Planification mensuelle</h3>
-        <p>Déclinaison des événements du mois pour chacun des services.</p>
+        <p>Programmations, réalisations et reports du mois.</p>
       </div>
       <button type="button" id="closeMonthlyTop" class="icon-btn">×</button>
     </div>
 
     <div class="monthly-admin-help">
-      Pour chaque événement, utilisez « Décliner par service » puis cochez uniquement les services concernés. La liste des services peut être enrichie au fur et à mesure. Cocher « Réalisé » renseigne automatiquement la date du jour si aucune date de réalisation n’est saisie.
+      Utilisez « Décliner par service » pour choisir les services concernés. Chaque service a son propre mois et peut avoir une date précise. Cocher « Réalisé » renseigne la date du jour si le champ est vide.
     </div>
 
     <section id="monthUpgradeAdmin" class="month-upgrade-admin no-export" hidden>

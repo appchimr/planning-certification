@@ -38,14 +38,114 @@ function monthIndex(month){
   return MONTHS.indexOf(month);
 }
 
-function monthEvents(events, month){
-  return events
-    .filter(e => e.month === month)
-    .sort((a,b) =>
-      (TYPE_ORDER[a.type] ?? 99) - (TYPE_ORDER[b.type] ?? 99) ||
-      String(a.plannedDate || "").localeCompare(String(b.plannedDate || "")) ||
-      a.label.localeCompare(b.label,"fr")
+const MONTH_NAMES = [
+  "JANVIER", "FÉVRIER", "MARS", "AVRIL", "MAI", "JUIN",
+  "JUILLET", "AOÛT", "SEPTEMBRE", "OCTOBRE", "NOVEMBRE", "DÉCEMBRE"
+];
+
+const STATUS_LABELS = {
+  planned:"Prévu", inProgress:"En cours", reported:"Reporté",
+  completed:"Réalisé", late:"En retard"
+};
+
+function dateMonth(date){
+  if(!date) return "";
+  const name = MONTH_NAMES[Number(String(date).slice(5,7)) - 1];
+  return name ? `${name} ${date.slice(0,4)}` : "";
+}
+
+function monthKey(month){
+  const name = month.slice(0,-5);
+  return `${month.slice(-4)}-${String(MONTH_NAMES.indexOf(name) + 1).padStart(2,"0")}`;
+}
+
+function planningToday(){
+  return new Intl.DateTimeFormat("sv-SE",{timeZone:"Europe/Paris"}).format();
+}
+
+function scheduleForEvent(event){
+  const rows = servicePlanForEvent(event);
+  if(rows.length) return rows.map(row => ({...row,plannedDate:row.dueDate}));
+
+  return [{
+    service:"",
+    plannedMonth:event.month,
+    plannedDate:event.plannedDate || "",
+    completedDate:event.completedDate || "",
+    done:Boolean(event.done || event.completedDate)
+  }];
+}
+
+function scheduleStatus(rows,today){
+  if(rows.every(row => row.done)) return "completed";
+  const overdue = rows.some(row => !row.done && (
+    row.plannedDate ? row.plannedDate < today : monthKey(row.plannedMonth) < today.slice(0,7)
+  ));
+  if(overdue) return "late";
+  return rows.some(row => row.done) ? "inProgress" : "planned";
+}
+
+function upcomingSchedule(rows,today){
+  return rows.filter(row => !row.done && (row.plannedDate
+    ? row.plannedDate >= today
+    : monthKey(row.plannedMonth) >= today.slice(0,7)));
+}
+
+function deadlineKey(row){
+  return row.plannedDate || monthKey(row.plannedMonth) + "-99";
+}
+
+function deadlineLabel(row){
+  return row.plannedDate
+    ? formatDateFr(row.plannedDate)
+    : row.plannedMonth.toLocaleLowerCase("fr");
+}
+
+function eventIsDone(event){
+  return scheduleForEvent(event).every(row => row.done);
+}
+
+function scheduleHistory(event){
+  return Array.isArray(event.scheduleHistory) ? event.scheduleHistory : [];
+}
+
+function monthEvents(events,month,editable=false){
+  return events.flatMap(event => {
+    const canEdit = editable && event.month === month;
+    const schedule = scheduleForEvent(event);
+    const rows = schedule.filter(row =>
+      row.plannedMonth === month || (row.done && dateMonth(row.completedDate) === month)
     );
+    const history = scheduleHistory(event).filter(entry => entry.fromMonth === month);
+    if(!rows.length && !history.length && !canEdit) return [];
+    return [{event,rows,history,canEdit}];
+  }).sort((a,b) =>
+    (TYPE_ORDER[a.event.type] ?? 99) - (TYPE_ORDER[b.event.type] ?? 99) ||
+    (a.rows[0]?.plannedDate || a.history[0]?.fromDate || "").localeCompare(
+      b.rows[0]?.plannedDate || b.history[0]?.fromDate || ""
+    ) ||
+    a.event.label.localeCompare(b.event.label,"fr")
+  );
+}
+
+function reportText(entry){
+  const destination = entry.fromMonth === entry.toMonth && entry.toDate
+    ? `au ${formatDateFr(entry.toDate)}`
+    : `en ${entry.toMonth.toLocaleLowerCase("fr")}`;
+  const original = entry.fromDate ? ` (prévu le ${formatDateFr(entry.fromDate)})` : "";
+  return `${entry.service ? entry.service + " · " : ""}Reporté ${destination}${original}`;
+}
+
+function monthStatus(entry,today){
+  const {event,rows,history} = entry;
+  if(event.type === "TH") return event.done ? "completed" : "planned";
+  if(!rows.length && history.length) return "reported";
+
+  const current = scheduleForEvent(event);
+  if(eventIsDone(event)) return "completed";
+  if(rows.length && scheduleStatus(rows,today) === "late") return "late";
+  if(current.some(row => row.done)) return "inProgress";
+  return "planned";
 }
 
 function phaseForMonth(month){
@@ -75,7 +175,24 @@ function renderStats(events){
   // Toutes les actions datables du programme sont comptées :
   // PT, PR, TC, AS, EV, EP, CR, JT et FP.
   const actions = events.filter(e => DATED_TYPES.has(e.type));
-  const doneActions = actions.filter(e => e.done);
+  const doneActions = actions.filter(eventIsDone);
+  const counts = Object.fromEntries(Object.keys(STATUS_LABELS).map(status => [status,0]));
+  const today = planningToday();
+
+  actions.forEach(event => {
+    counts[scheduleStatus(scheduleForEvent(event),today)]++;
+    if(scheduleHistory(event).length) counts.reported++;
+  });
+
+  const indicators = document.getElementById("scheduleIndicators");
+  if(indicators){
+    indicators.replaceChildren(...Object.entries(STATUS_LABELS).map(([status,label]) => {
+      const item = document.createElement("span");
+      item.className = `schedule-status ${status}`;
+      item.textContent = `${status === "reported" ? "Avec report" : label} · ${counts[status]}`;
+      return item;
+    }));
+  }
 
   const themes = events.filter(e => e.type === "TH");
   const doneThemes = themes.filter(e => e.done);
@@ -102,51 +219,15 @@ function renderNext(events){
   const el = document.getElementById("nextList");
   if(!el) return;
 
-  const now = new Date();
-  const today =
-    new Date(now.getFullYear(),now.getMonth(),now.getDate());
-
-  const deadlines = [];
-
-  events
-    .filter(e => !e.done && DATED_TYPES.has(e.type))
-    .forEach(e => {
-      // Si une date globale existe, elle reste la référence.
-      if(e.plannedDate){
-        deadlines.push({
-          date:e.plannedDate,
-          type:e.type,
-          label:e.label,
-          service:""
-        });
-        return;
-      }
-
-      // Sinon, remonter les échéances détaillées du suivi mensuel.
-      servicePlanForEvent(e)
-        .filter(row =>
-          !row.done &&
-          !!row.plannedDate
-        )
-        .forEach(row => {
-          deadlines.push({
-            date:row.plannedDate,
-            type:e.type,
-            label:e.label,
-            service:row.service
-          });
-        });
-    });
-
-  const upcoming = deadlines
-    .filter(item => {
-      const d = new Date(`${item.date}T12:00:00`);
-      return d >= today;
-    })
+  const today = planningToday();
+  const upcoming = events
+    .filter(event => DATED_TYPES.has(event.type))
+    .flatMap(event => upcomingSchedule(scheduleForEvent(event),today)
+      .map(row => ({...row,type:event.type,label:event.label})))
     .sort((a,b) =>
-      String(a.date).localeCompare(String(b.date)) ||
+      deadlineKey(a).localeCompare(deadlineKey(b)) ||
       (TYPE_ORDER[a.type] ?? 99) - (TYPE_ORDER[b.type] ?? 99) ||
-      String(a.label).localeCompare(String(b.label),"fr")
+      a.label.localeCompare(b.label,"fr")
     )
     .slice(0,5);
 
@@ -154,7 +235,7 @@ function renderNext(events){
 
   if(!upcoming.length){
     el.innerHTML =
-      '<span class="metric-sub">Aucune échéance datée à venir.</span>';
+      '<span class="metric-sub">Aucune échéance à venir.</span>';
     return;
   }
 
@@ -168,7 +249,7 @@ function renderNext(events){
         : "";
 
     row.innerHTML =
-      `<span class="next-date">${formatDateFr(item.date)}</span>` +
+      `<span class="next-date">${escapeHtml(deadlineLabel(item))}</span>` +
       `<span class="badge ${item.type} mini">${item.type}</span>` +
       `<span class="next-label">${escapeHtml(item.label)}</span>` +
       service;
@@ -194,84 +275,27 @@ function formatDateFr(iso){
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
-function eventDateText(e){
-  if(!DATED_TYPES.has(e.type)){
-    return {text:"",status:""};
-  }
-
-  if(e.done && e.completedDate){
-    return {
-      text:`Réalisé le ${formatDateFr(e.completedDate)}`,
-      status:"completed"
-    };
-  }
-
-  // Une date programmée directement sur l'événement reste prioritaire.
-  if(e.plannedDate){
-    return {
-      text:`Prévu le ${formatDateFr(e.plannedDate)}`,
-      status:"planned"
-    };
-  }
-
-  // Sinon, récupérer automatiquement la programmation détaillée
-  // saisie dans le suivi mensuel par service.
-  const serviceRows = servicePlanForEvent(e);
-  const servicePlannedDates = serviceRows
-    .map(row => row.plannedDate)
-    .filter(Boolean)
-    .sort();
-
-  if(servicePlannedDates.length){
-    const firstDate = servicePlannedDates[0];
-
-    // Pour une méthode concernant un seul service, la date est sans ambiguïté.
-    if(serviceRows.length === 1){
-      return {
-        text:`Prévu le ${formatDateFr(firstDate)}`,
-        status:"planned"
-      };
-    }
-
-    // Pour une action déclinée sur plusieurs services, afficher la première
-    // date programmée sans laisser croire que toutes les déclinaisons ont
-    // nécessairement lieu le même jour.
-    return {
-      text:`Prévu dès le ${formatDateFr(firstDate)}`,
-      status:"planned"
-    };
-  }
-
-  if(e.done){
-    return {
-      text:"Réalisé",
-      status:"completed"
-    };
-  }
-
-  return {text:"",status:""};
-}
-
 function servicePlanForEvent(event){
-  return Array.isArray(event.servicePlan)
-    ? event.servicePlan
-        .map(row => ({
-          service:String(row.service || "").trim(),
-          plannedDate:row.plannedDate || "",
-          completedDate:row.completedDate || "",
-          done:!!row.done,
-          evaluatorMode:
-            row.evaluatorMode === "custom"
-              ? "custom"
-              : "inherit",
-          evaluators:Array.isArray(row.evaluators)
-            ? row.evaluators
-                .map(name => String(name || "").trim())
-                .filter(Boolean)
-            : []
-        }))
-        .filter(row => row.service)
-    : [];
+  if(event.type === "TH" || !Array.isArray(event.servicePlan)) return [];
+
+  return event.servicePlan.map(row => {
+    const plannedMonth = dateMonth(row.plannedDate) || row.plannedMonth || event.month;
+    const inheritedDate = plannedMonth === event.month && dateMonth(event.plannedDate) === plannedMonth
+      ? event.plannedDate : "";
+
+    return {
+      service:String(row.service || "").trim(),
+      plannedMonth,
+      plannedDate:row.plannedDate || "",
+      dueDate:row.plannedDate || inheritedDate,
+      completedDate:row.completedDate || "",
+      done:Boolean(row.done || row.completedDate),
+      evaluatorMode:row.evaluatorMode === "custom" ? "custom" : "inherit",
+      evaluators:Array.isArray(row.evaluators)
+        ? row.evaluators.map(name => String(name || "").trim()).filter(Boolean)
+        : []
+    };
+  }).filter(row => row.service);
 }
 
 function eventServiceProgress(event){
@@ -446,6 +470,7 @@ function buildMonthlyServiceRow(
   done.className = "monthly-done-cell";
 
   if(editable){
+    tr.dataset.editable = "true";
     const plannedInput = document.createElement("input");
     plannedInput.type = "date";
     plannedInput.className = "monthly-planned";
@@ -462,21 +487,30 @@ function buildMonthlyServiceRow(
     doneInput.checked = !!rowData.done;
     doneInput.title = "Action réalisée";
 
-    planned.appendChild(plannedInput);
+    const monthSelect = document.createElement("select");
+    monthSelect.className = "monthly-planned-month";
+    monthSelect.setAttribute("aria-label", `Mois prévu · ${rowData.service}`);
+    plannedInput.setAttribute("aria-label", `Date prévue · ${rowData.service}`);
+    const options = [...new Set([...MONTHS.slice(0,-1),rowData.plannedMonth])]
+      .sort((a,b) => monthKey(a).localeCompare(monthKey(b)));
+    options.forEach(month => monthSelect.add(new Option(month,month)));
+    monthSelect.value = rowData.plannedMonth;
+
+    planned.append(monthSelect,plannedInput);
     completed.appendChild(completedInput);
     done.appendChild(doneInput);
   }else{
-    planned.textContent = rowData.plannedDate
-      ? formatDateFr(rowData.plannedDate)
-      : "—";
+    const plannedDate = rowData.dueDate || rowData.plannedDate;
+    planned.textContent = plannedDate
+      ? formatDateFr(plannedDate)
+      : rowData.plannedMonth.toLocaleLowerCase("fr");
 
     completed.textContent = rowData.completedDate
       ? formatDateFr(rowData.completedDate)
       : "—";
 
-    done.innerHTML = rowData.done
-      ? '<span class="monthly-status done">✓ Réalisé</span>'
-      : '<span class="monthly-status pending">À réaliser</span>';
+    const status = scheduleStatus([{...rowData,plannedDate}],planningToday());
+    done.appendChild(statusBadge(status));
   }
 
   tr.append(service,evaluator,planned,completed,done);
@@ -675,18 +709,54 @@ function buildMonthlyEvaluator(event,editable=false,evaluatorCatalog=[]){
   return wrap;
 }
 
+function statusBadge(status){
+  const badge = document.createElement("span");
+  badge.className = `schedule-status ${status}`;
+  badge.textContent = STATUS_LABELS[status];
+  return badge;
+}
+
+function reportList(history){
+  const list = document.createElement("ul");
+  list.className = "schedule-history";
+  history.forEach(entry => {
+    const item = document.createElement("li");
+    item.textContent = reportText(entry);
+    list.appendChild(item);
+  });
+  return list;
+}
+
+function scheduleDetails(entry,today){
+  const {event,rows} = entry;
+  const details = [];
+  const progress = eventServiceProgress(event);
+  if(progress.total){
+    details.push(`${progress.done}/${progress.total} service${progress.total > 1 ? "s" : ""} réalisé${progress.total > 1 ? "s" : ""}`);
+    const pending = upcomingSchedule(scheduleForEvent(event),today);
+    const next = pending.sort((a,b) => deadlineKey(a).localeCompare(deadlineKey(b)))[0];
+    if(next) details.push(`Prochaine échéance · ${deadlineLabel(next)}`);
+  }else if(rows.length){
+    const date = rows[0].done ? rows[0].completedDate : rows[0].plannedDate;
+    if(date) details.push(`Le ${formatDateFr(date)}`);
+  }
+  return details;
+}
+
 function renderMonthlyPlanBody(
   targetId,
   month,
   events,
   editable=false,
   serviceCatalog=[],
-  evaluatorCatalog=[]
+  evaluatorCatalog=[],
+  openOwnerMonth
 ){
   const root = document.getElementById(targetId);
   if(!root) return;
 
-  const items = monthEvents(events,month);
+  const items = monthEvents(events,month,editable);
+  const today = planningToday();
   root.innerHTML = "";
 
   if(!items.length){
@@ -695,15 +765,17 @@ function renderMonthlyPlanBody(
     return;
   }
 
-  items.forEach(event => {
+  items.forEach(entry => {
+    const {event,canEdit,history} = entry;
     const block = document.createElement("section");
     block.className =
       `monthly-event monthly-type-${event.type}`;
     block.dataset.eventId = event.id;
 
     const isTheme = event.type === "TH";
-    const rows = isTheme ? [] : servicePlanForEvent(event);
-    const progress = eventServiceProgress(event);
+    const rows = isTheme ? [] : canEdit
+      ? servicePlanForEvent(event)
+      : entry.rows.filter(row => row.service);
 
     const head = document.createElement("div");
     head.className = "monthly-event-head";
@@ -720,7 +792,7 @@ function renderMonthlyPlanBody(
     if(isTheme){
       head.append(title);
 
-      if(editable){
+      if(canEdit){
         const themeStatus = document.createElement("label");
         themeStatus.className = "monthly-theme-status no-export";
 
@@ -749,7 +821,7 @@ function renderMonthlyPlanBody(
 
       const evaluator = buildMonthlyEvaluator(
         event,
-        editable,
+        canEdit,
         evaluatorCatalog
       );
 
@@ -760,14 +832,12 @@ function renderMonthlyPlanBody(
       const summary = document.createElement("div");
       summary.className = "monthly-event-summary";
 
-      if(rows.length){
-        summary.innerHTML =
-          `<strong>${progress.done} / ${progress.total}</strong>` +
-          `<span>service${progress.total > 1 ? "s" : ""} réalisé${progress.total > 1 ? "s" : ""}</span>`;
-      }else{
-        summary.innerHTML =
-          `<span>Non décliné par service</span>`;
-      }
+      summary.appendChild(statusBadge(monthStatus(entry,today)));
+      scheduleDetails(entry,today).forEach(detail => {
+        const text = document.createElement("span");
+        text.textContent = detail;
+        summary.appendChild(text);
+      });
 
       side.appendChild(summary);
       head.append(title,side);
@@ -775,6 +845,8 @@ function renderMonthlyPlanBody(
 
     const content = document.createElement("div");
     content.className = "monthly-event-content";
+
+    if(history.length) content.appendChild(reportList(history));
 
     if(isTheme){
       content.classList.add("monthly-theme-content");
@@ -791,7 +863,7 @@ function renderMonthlyPlanBody(
           `<th>Évaluateur(s)</th>` +
           `<th>Date prévisionnelle</th>` +
           `<th>Date de réalisation</th>` +
-          `<th>Réalisé</th>` +
+          `<th>Statut</th>` +
         `</tr></thead>`;
 
       const tbody = document.createElement("tbody");
@@ -801,7 +873,7 @@ function renderMonthlyPlanBody(
           buildMonthlyServiceRow(
             event,
             rowData,
-            editable,
+            canEdit,
             evaluatorCatalog
           )
         );
@@ -811,17 +883,15 @@ function renderMonthlyPlanBody(
       tableWrap.appendChild(table);
       content.appendChild(tableWrap);
 
-    }else if(!isTheme){
+    }else if(canEdit){
       const empty = document.createElement("div");
       empty.className = "monthly-event-empty";
-      empty.textContent = editable
-        ? "Aucun service sélectionné pour cet événement."
-        : "Aucune déclinaison par service n’est programmée pour cet événement.";
+      empty.textContent = "Aucun service sélectionné pour cet événement.";
 
       content.appendChild(empty);
     }
 
-    if(editable && !isTheme){
+    if(canEdit && !isTheme){
       const tools = document.createElement("div");
       tools.className = "monthly-event-tools no-export";
 
@@ -843,13 +913,25 @@ function renderMonthlyPlanBody(
       );
     }
 
+    if(editable && !canEdit && openOwnerMonth && servicePlanForEvent(event).length){
+      const owner = document.createElement("button");
+      owner.type = "button";
+      owner.className = "btn ghost no-export";
+      owner.textContent = `Modifier le suivi · ${event.month.toLocaleLowerCase("fr")}`;
+      owner.addEventListener("click",() => openOwnerMonth(event.month));
+      content.appendChild(owner);
+    }
+
     block.append(head,content);
     root.appendChild(block);
   });
 }
-function buildEventRow(e, editable=false, handlers={}){
+function buildEventRow(entry,editable=false,handlers={}){
+  const {event:e,rows,history} = entry;
+  const today = planningToday();
+  const status = monthStatus(entry,today);
   const row = document.createElement("div");
-  row.className = `event-row ${e.type}${e.done ? " done" : ""}`;
+  row.className = `event-row ${e.type}${status === "completed" ? " done" : ""}`;
   row.dataset.id = e.id;
 
   const code = document.createElement("span");
@@ -864,17 +946,24 @@ function buildEventRow(e, editable=false, handlers={}){
   label.textContent = e.label;
   content.appendChild(label);
 
-  // Le type et le libellé restent à gauche.
-  row.append(code, content);
+  row.append(code,content);
 
-  // La date est ajoutée ensuite afin d'être alignée à droite.
-  const dateInfo = eventDateText(e);
-  if(dateInfo.text){
-    const date = document.createElement("span");
-    date.className =
-      `event-date event-date-inline ${dateInfo.status === "completed" ? "event-date-completed" : "event-date-planned"}`;
-    date.textContent = dateInfo.text;
-    row.appendChild(date);
+  if(e.type !== "TH"){
+    const details = document.createElement("div");
+    details.className = "event-schedule";
+    details.appendChild(statusBadge(status));
+
+    const summary = scheduleDetails(entry,today);
+    if(servicePlanForEvent(e).length && rows.length){
+      summary.unshift(rows.map(service => service.service).join(", "));
+    }
+    summary.forEach(text => {
+      const detail = document.createElement("span");
+      detail.textContent = text;
+      details.appendChild(detail);
+    });
+    if(history.length) details.appendChild(reportList(history));
+    content.appendChild(details);
   }
 
   if(editable){
@@ -884,7 +973,7 @@ function buildEventRow(e, editable=false, handlers={}){
     const check = document.createElement("input");
     check.type = "checkbox";
     check.className = "done-check";
-    check.checked = !!e.done;
+    check.checked = eventIsDone(e);
     check.title = e.type === "TH" ? "Thématique traitée" : "Événement réalisé";
     check.addEventListener("change", () =>
       handlers.toggle?.(e.id, check.checked)
@@ -902,7 +991,8 @@ function buildEventRow(e, editable=false, handlers={}){
     del.textContent = "Suppr.";
     del.addEventListener("click", () => handlers.delete?.(e.id));
 
-    actions.append(check, edit, del);
+    if(!servicePlanForEvent(e).length && rows.length) actions.append(check);
+    actions.append(edit,del);
     row.append(actions);
   }
 
@@ -959,7 +1049,7 @@ function buildMonthCard(month, events, editable=false, handlers={}, monthSetting
   list.className = "event-list";
 
   monthEvents(events,month)
-    .forEach(e => list.appendChild(buildEventRow(e,editable,handlers)));
+    .forEach(entry => list.appendChild(buildEventRow(entry,editable,handlers)));
 
   if(month === "AOÛT 2027"){
     const note = document.createElement("div");
@@ -1035,7 +1125,7 @@ function buildFinalSection(events, editable=false, handlers={}, monthSettings=[]
   list.className = "event-list";
 
   monthEvents(events,"JANVIER 2028")
-    .forEach(e => list.appendChild(buildEventRow(e,editable,handlers)));
+    .forEach(entry => list.appendChild(buildEventRow(entry,editable,handlers)));
 
   jan.append(janTitle, list);
 
@@ -1067,6 +1157,28 @@ function buildFinalSection(events, editable=false, handlers={}, monthSettings=[]
     '</div>';
 
   grid.append(jan,feb);
+
+  const extraMonths = new Set();
+  events.forEach(event => {
+    const months = [
+      event.month,
+      ...scheduleForEvent(event).flatMap(row => [row.plannedMonth,dateMonth(row.completedDate)]),
+      ...scheduleHistory(event).map(entry => entry.fromMonth)
+    ];
+    months.filter(month => month && !MONTHS.slice(0,-1).includes(month))
+      .forEach(month => extraMonths.add(month));
+  });
+
+  if(extraMonths.size){
+    const extra = buildSection(
+      "AUTRES MOIS DU PLANNING",
+      [...extraMonths].sort((a,b) => monthKey(a).localeCompare(monthKey(b))),
+      events,editable,handlers,monthSettings
+    );
+    section.append(h,grid,extra);
+    return section;
+  }
+
   section.append(h,grid);
   return section;
 }
@@ -1159,16 +1271,11 @@ function toast(msg){
 function monthlySummaryStats(month,events){
   const items = monthEvents(events,month);
 
-  const completedEvents =
-    items.filter(event => event.done).length;
-
-  const serviceRows =
-    items.flatMap(event => servicePlanForEvent(event));
-
-  const completedServiceRows =
-    serviceRows.filter(row =>
-      row.done && row.completedDate
-    ).length;
+  const completedEvents = items.filter(entry =>
+    entry.rows.length && eventIsDone(entry.event)
+  ).length;
+  const serviceRows = items.flatMap(entry => entry.rows.filter(row => row.service));
+  const completedServiceRows = serviceRows.filter(row => row.done).length;
 
   return {
     totalEvents:items.length,
